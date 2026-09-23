@@ -1,8 +1,9 @@
-// Decorative surroundings: textured grass, fence, street, trees, bushes and lamps.
+// Decorative surroundings: textured grass, fence, street, trees, bushes, lamps and the neighbours' houses.
 // Everything sits on the lot edge or outside the walkable grid so it never blocks sims.
 import * as THREE from 'three';
 import { GRID_W, GRID_H } from './data.js';
 import { mat, box } from './models.js';
+import { HOUSES } from './neighbours.js';
 
 // Deterministic pseudo-random so the neighbourhood looks the same every time.
 function seeded(seed) {
@@ -77,6 +78,61 @@ function bush(r, x, z) {
   return g;
 }
 
+function saleSign() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f4f0e6'; ctx.fillRect(0, 0, 256, 128);
+  ctx.fillStyle = '#c0392b'; ctx.fillRect(0, 0, 256, 34);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 26px Georgia'; ctx.textAlign = 'center'; ctx.fillText('FOR SALE', 128, 26);
+  ctx.fillStyle = '#2a2a2a'; ctx.font = 'bold 20px Georgia'; ctx.fillText('Motivated sellers.', 128, 72); ctx.fillText('Very motivated.', 128, 104);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sign = new THREE.Group();
+  sign.add(box(0.08, 1.3, 0.08, 0x6a4a2a, 0, 0.65, 0));
+  sign.add(box(1.2, 0.6, 0.05, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }), 0, 1.1, 0.06));
+  return sign;
+}
+
+// A neighbour's house, facing the street. Walls and window glow are its own materials so the view
+// can repaint it for each new family and light it up at night; the FOR SALE sign shows when it's empty.
+function neighbourHouse(scene, side) {
+  const { x, z } = HOUSES[side];
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  const walls = new THREE.MeshStandardMaterial({ color: 0xd8c3a5, roughness: 0.9, side: THREE.DoubleSide });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x2a3440, emissive: 0xffc870, emissiveIntensity: 0, roughness: 0.3 });
+  g.add(box(8, 2.8, 6, walls, 0, 1.4, 0));
+  const rise = 1.8, run = 3.3, len = Math.hypot(run, rise), tilt = Math.atan2(rise, run);
+  for (const s of [-1, 1]) {
+    const slope = box(8.6, 0.14, len, 0x6a3a2e, 0, 2.8 + rise / 2, s * run / 2);
+    slope.rotation.x = s * tilt;
+    g.add(slope);
+  }
+  const gable = new THREE.Shape([new THREE.Vector2(-3, 0), new THREE.Vector2(3, 0), new THREE.Vector2(0, rise)]);
+  for (const gx of [-4, 4]) {
+    const end = new THREE.Mesh(new THREE.ShapeGeometry(gable), walls);
+    end.rotation.y = Math.PI / 2;
+    end.position.set(gx, 2.8, 0);
+    g.add(end);
+  }
+  g.add(box(0.6, 1.4, 0.6, 0x8a7a70, 2.4, 4.1, -1));
+  g.add(box(1, 1.9, 0.1, 0x5a3a28, 0, 0.95, 3.02));
+  for (const wx of [-2.6, 2.6]) g.add(box(1.3, 0.9, 0.06, glass, wx, 1.6, 3.02), box(1.45, 0.08, 0.1, 0xf4f0e6, wx, 1.1, 3.05));
+  for (const wz of [-1.4, 1.4]) g.add(box(0.06, 0.9, 1.1, glass, side === 'west' ? 4.02 : -4.02, 1.6, wz));
+  // Front path down to the pavement, and a little hedge.
+  const pathLen = GRID_H + 0.3 - (z + 3);
+  g.add(box(1.1, 0.02, pathLen, 0xc9c2b4, 0, 0.012, 3 + pathLen / 2));
+  for (const hx of [-2.8, 2.8]) g.add(box(3.4, 0.5, 0.5, 0x3f7a3a, hx, 0.25, GRID_H - z - 0.6));
+  const sign = saleSign();
+  sign.position.set(1.8, 0, GRID_H - z - 1.4);
+  sign.visible = false;
+  g.add(sign);
+  g.traverse(o => { o.userData.pick = { kind: 'house', side }; });
+  scene.add(g);
+  return { walls, glass, sign };
+}
+
 export function buildGarden(scene) {
   const out = { lamps: [] };
   const r = seeded(42);
@@ -137,10 +193,13 @@ export function buildGarden(scene) {
     else if (side === 1) { x = GRID_W + 2 + r() * 12; z = -8 + r() * 26; }
     else { x = -8 + r() * (GRID_W + 16); z = -2 - r() * 10; }
     if (spots.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 1.6)) continue;
+    // Keep the neighbours' houses and front gardens clear.
+    if (Object.values(HOUSES).some(h => Math.abs(x - h.x) < 5.5 && z > 2.5 && z < GRID_H + 0.5)) continue;
     spots.push([x, z]);
     scene.add(r() < 0.6 ? tree(r, x, z) : bush(r, x, z));
   }
   for (let i = 0; i < 18; i++) scene.add(bush(r, -0.6 - r() * 0.6, 1 + i * 0.85));
   for (let i = 0; i < 12; i++) scene.add(bush(r, 1 + i * 1.8, -0.7 - r() * 0.5));
+  out.houses = { west: neighbourHouse(scene, 'west'), east: neighbourHouse(scene, 'east') };
   return out;
 }

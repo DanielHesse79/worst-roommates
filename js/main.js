@@ -11,6 +11,7 @@ import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
 import { SHOP, LOCKED_TRAPS, contractReward } from './shop.js';
 import { updateVisitors, scheduleNextVisit, visitorsNear, dismissVisitors } from './visitors.js';
+import { initNeighbours, updateNeighbours, annoyNeighbour, pleaseNeighbour, SIDES } from './neighbours.js';
 import { updateEmergency, resetEmergency, requestInvestigation, endInvestigation, respondersNear } from './emergency.js';
 
 const SPEEDS = [0, 1, 3, 8];
@@ -81,7 +82,9 @@ class Game {
     this.doom = 0;
     this.hackLockUntil = 0;
     this.visit = null;
+    this.visitBans = new Set();
     scheduleNextVisit(this);
+    initNeighbours(this);
     resetEmergency(this);
     this.meteors = [];
     this.ghosts = [];
@@ -186,6 +189,9 @@ class Game {
   }
 
   dismissVisitors(why) { dismissVisitors(this, why); }
+  annoyNeighbour(side, amount, msg) { annoyNeighbour(this, side, amount, msg); }
+  annoyNeighbours(amount) { for (const side of SIDES) annoyNeighbour(this, side, amount); }
+  pleaseNeighbour(side, amount, msg) { pleaseNeighbour(this, side, amount, msg); }
   endInvestigation(msg) { return endInvestigation(this, msg); }
 
   godAction(p) {
@@ -308,9 +314,13 @@ class Game {
     if (st.blasting > 0) {
       st.blasting -= min;
       st.blastedFor = (st.blastedFor || 0) + min;
-      if (this.isNight && st.blastedFor > 45 && !st.complained) {
+      // Night-time bass wears the neighbours down, half an hour at a time.
+      if (this.isNight && st.blastedFor > 30) {
+        st.blastedFor = 0;
+        const n = this.neighbours.west.state === 'home' ? this.neighbours.west : this.neighbours.east;
+        if (!st.complained && n.state === 'home') this.log(`📞 ${n.family.visitor} bangs on the wall and threatens to call the police. Nobody can hear them over the bass.`, 'dim');
         st.complained = true;
-        this.log('📞 Mrs. Crabtree bangs on the wall and threatens to call the police. Nobody can hear her over the bass.', 'dim');
+        this.annoyNeighbours(6);
       }
       if (st.blasting <= 0) { st.blastedFor = 0; st.complained = false; }
     }
@@ -527,6 +537,7 @@ class Game {
     this.meteors = this.meteors.filter(m => m.t < m.dur);
     updateGhosts(this, gdt, min);
     updateVisitors(this, gdt, min);
+    updateNeighbours(this, gdt, min);
     updateEmergency(this, gdt, min);
     if (this.hackLockUntil && this.clock > this.hackLockUntil) {
       this.hackLockUntil = 0;

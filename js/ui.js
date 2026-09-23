@@ -193,9 +193,16 @@ export class UI {
     const title = pick.kind === 'object' ? pick.obj.name : pick.kind === 'sim' ? pick.sim.name : pick.kind === 'tomb' ? `R.I.P. ${pick.tomb.name} — "${pick.tomb.epitaph || 'Gone.'}"`
       : pick.kind === 'door' ? pick.door.name : pick.kind === 'visitor' ? `${g.visit.type.icon} ${g.visit.type.name} at the door`
       : pick.kind === 'responder' ? `${pick.person.kind === 'detective' ? '🕵️' : '🧯'} ${pick.person.title}`
-      : pick.kind === 'car' ? '🚗 A car passing the house' : pick.kind === 'mess' ? '🗑️ A disgusting mess' : 'Swimming Pool';
+      : pick.kind === 'car' ? '🚗 A car passing the house' : pick.kind === 'mess' ? '🗑️ A disgusting mess'
+      : pick.kind === 'house' ? this.houseTitle(pick.side) : 'Swimming Pool';
     if (!items.length) items.push({ label: g.selected ? `${g.selected.first} can't do anything here` : 'Select a sim first', icon: '🤷', run: () => {} });
     this.showPie(items, x, y, title);
+  }
+
+  houseTitle(side) {
+    const n = this.game.neighbours[side];
+    if (n.state !== 'home') return '🏚️ Next door: FOR SALE';
+    return `🏠 The ${n.family.name}s (${n.family.trait}) · patience ${Math.max(0, Math.round(n.patience))}%${n.banned ? ' · never visiting again' : ''}`;
   }
 
   showPie(items, x, y, title) {

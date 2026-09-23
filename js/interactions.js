@@ -3,6 +3,8 @@
 //   approachSim?, available?, start?, tick?(s,t,g,a,min), finish?, facePos? }
 import { triggerFireworks, openMail, fartCloud, dustExplosion } from './traps.js';
 import { responderSpot } from './emergency.js';
+import { visitorOutcome } from './visitors.js';
+import { GRID_W } from './data.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -720,13 +722,27 @@ export const SIM_ACTIONS = [
 // Answering the front door. The sim stands just inside it; the visitors stay outside.
 const atDoor = { spot: () => [10, 10], facePos: () => [10.5, 11.5] };
 export const VISITOR_ACTIONS = [
-  { id: 'slam', label: 'Slam the door in their faces', icon: '🚪', duration: 4, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour'],
-    finish(s, t, g) { s.addNeed('fun', 12); g.dismissVisitors(`🚪 ${s.first} slams the door so hard a picture falls off the wall.`); } },
+  { id: 'slam', label: 'Slam the door in their faces', icon: '🚪', duration: 4, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour', 'salesman'],
+    finish(s, t, g) { s.addNeed('fun', 12); g.log(`🚪 ${s.first} slams the door so hard a picture falls off the wall.`, 'dim'); visitorOutcome(g, 'slam'); } },
   { id: 'pamphlet', label: 'Accept a pamphlet', icon: '📖', duration: 10, ...atDoor, kinds: ['witnesses', 'mormons'],
     finish(s, t, g) { g.doom += 1; g.dismissVisitors(`📖 ${s.first} accepts a pamphlet titled "The End Is Nigh". Somewhere above, the sky takes it as a suggestion. (Doom ${g.doom})`); } },
-  { id: 'doorchat', label: 'Chat on the doorstep', icon: '💬', duration: 25, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour'],
+  { id: 'doorchat', label: 'Chat on the doorstep', icon: '💬', duration: 25, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour', 'salesman'],
     tick(s, t, g, a, m) { s.addNeed('social', 1.2 * m); if (Math.random() < 0.15 * m) g.sfx('blah'); },
-    finish(s, t, g) { g.dismissVisitors(`💬 ${s.first} chats until the visitors run out of things to say. They leave, slightly traumatised.`); } },
+    finish(s, t, g) { visitorOutcome(g, 'chat'); } },
+  { id: 'buyknives', label: 'Buy the knife set', icon: '🔪', duration: 10, ...atDoor, kinds: ['salesman'],
+    finish(s, t, g) {
+      if (g.contract) g.malice += 15;
+      g.log(`🔪 ${s.first} buys the deluxe knife set. Nobody in the house sleeps well tonight.${g.contract ? ' (+15 😈)' : ''}`, 'tool');
+      visitorOutcome(g, 'bought');
+    } },
+  { id: 'rudevisit', label: 'Tell them to get off your lawn', icon: '🗯️', evil: true, duration: 5, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour', 'salesman', 'cop'],
+    finish(s, t, g) { s.addNeed('fun', 10); visitorOutcome(g, 'insult'); } },
+  { id: 'gasvisit', label: 'Let one rip on the doorstep', icon: '💨', evil: true, duration: 4, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour', 'salesman', 'cop'],
+    available: s => s.status.gassy > 0,
+    finish(s, t, g) { fartCloud(g, s, 1); visitorOutcome(g, 'gassed'); } },
+  { id: 'hugvisit', label: 'Greet them with a long, sweaty hug', icon: '🦨', evil: true, duration: 6, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour', 'salesman', 'cop'],
+    available: s => s.needs.hygiene < 25,
+    finish(s, t, g) { visitorOutcome(g, 'stench'); } },
   { id: 'charmcop', label: 'Charm the officer', icon: '😘', duration: 15, ...atDoor, kinds: ['cop'], available: s => s.canUse('lure'),
     finish(s, t, g) {
       if (s.rosterId === 'asraa') {
@@ -791,6 +807,22 @@ export const CLEAN = {
     if (culprit) changeRel(s, culprit, -6);
   },
 };
+
+// Lobbing things over the fence at the neighbours' houses.
+const fenceSpot = (s, t) => (t.side === 'west' ? [0, 13] : [GRID_W - 1, 13]);
+const home = (s, t, g) => g.neighbours[t.side].state === 'home';
+const family = (t, g) => g.neighbours[t.side].family.name;
+export const HOUSE_ACTIONS = [
+  { id: 'egg', label: 'Egg their house', icon: '🥚', evil: true, duration: 10, spot: fenceSpot, available: home,
+    facePos: (s, t) => [t.side === 'west' ? -9 : GRID_W + 9, 9],
+    finish(s, t, g) {
+      s.addNeed('fun', 20);
+      g.annoyNeighbour(t.side, 25, `🥚 ${s.first} lobs a dozen eggs over the fence at the ${family(t, g)}s' house. One goes straight through the kitchen window.`);
+    } },
+  { id: 'gift', label: 'Toss a fruit basket over the fence', icon: '🧺', duration: 8, spot: fenceSpot, available: home,
+    facePos: (s, t) => [t.side === 'west' ? -9 : GRID_W + 9, 9],
+    finish(s, t, g) { g.pleaseNeighbour(t.side, 20, `🧺 ${s.first} tosses a fruit basket over the fence. The ${family(t, g)}s are touched, if slightly bruised.`); } },
+];
 
 const tombSpot = (s, t, g) => s.adjacentTo({ cx: t.x, cz: t.z }, g.world);
 export const TOMB_ACTIONS = [
@@ -979,6 +1011,9 @@ export function menuFor(pick, sim, game) {
       break;
     case 'visitor':
       if (game.visit && game.visit.state !== 'leave') VISITOR_ACTIONS.filter(d => d.kinds.includes(game.visit.kind)).forEach(d => add(d, game.visit));
+      break;
+    case 'house':
+      HOUSE_ACTIONS.forEach(d => add(d, { side: pick.side }));
       break;
     case 'mess':
       add(CLEAN, pick.mess);

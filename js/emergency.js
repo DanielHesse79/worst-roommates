@@ -17,7 +17,7 @@ const POLICE_COOLDOWN = 600;              // quiet minutes after a search before
 let nextId = 1;
 
 const CALLERS = [
-  'Mrs. Crabtree next door finally stops filming and calls it in.',
+  'The neighbours finally stop filming and call it in.',
   'A passing jogger notices the smoke and calls 112 between sets.',
   'The neighbours argue over whose turn it is to call. Eventually someone does.',
   'Somebody posts "is that house ON FIRE??" in the neighbourhood group. A retired fireman calls it in.',
@@ -38,25 +38,28 @@ function responder(g, kind, first, title, x, z) {
 }
 
 // The fire engine comes from the west and the police from the east, and each U-turns and leaves the
-// way it came, so parked emergency vehicles never have to drive through each other.
-function vehicle(g, kind, parkX) {
-  const side = kind === 'police' ? 1 : -1;
-  const v = { id: 'car' + nextId++, kind, side, x: side < 0 ? STREET_START : STREET_END, z: CURB_Z, yaw: side < 0 ? 0 : Math.PI, turn: 0, parkX, state: 'arrive' };
+// way it came, so parked vehicles never have to drive through each other. Removal vans (neighbours.js)
+// use the far kerb.
+export function vehicle(g, kind, parkX, side = kind === 'police' ? 1 : -1, z = CURB_Z) {
+  const v = { id: 'car' + nextId++, kind, side, x: side < 0 ? STREET_START : STREET_END, z, baseZ: z, yaw: side < 0 ? 0 : Math.PI, turn: 0, parkX, state: 'arrive' };
   g.vehicles.push(v);
   return v;
 }
 
-function driveVehicle(g, v, gdt) {
+const SIRENS = { police: 'police', firetruck: 'siren' };
+
+export function driveVehicle(g, v, gdt) {
   if (v.state === 'arrive') {
     const d = Math.abs(v.parkX - v.x);
     const step = clamp(d * 1.1, 2, 14) * gdt;
     if (d <= step) { v.x = v.parkX; v.state = 'parked'; }
     else v.x -= v.side * step;
-    g.sfx(v.kind === 'police' ? 'police' : 'siren');
+    if (SIRENS[v.kind]) g.sfx(SIRENS[v.kind]);
   } else if (v.state === 'leave') {
     v.turn = Math.min(1, v.turn + gdt / 1.2);
     v.yaw = (v.side < 0 ? 0 : Math.PI) + Math.PI * v.turn;
-    v.z = CURB_Z + Math.sin(Math.PI * v.turn) * 0.9;
+    // Swing out towards the middle of the road for the U-turn.
+    v.z = v.baseZ + Math.sin(Math.PI * v.turn) * 0.9 * (v.baseZ > GRID_H + 4 ? -1 : 1);
     if (v.turn >= 1) v.x += v.side * 9 * gdt;
     if (v.x < STREET_START - 2 || v.x > STREET_END + 2) g.vehicles = g.vehicles.filter(o => o !== v);
   }
@@ -252,6 +255,7 @@ function updateBrigade(g, gdt, min) {
       responder(g, 'firefighter', 'Hank', 'Firefighter Hank', b.truck.x + 0.5, CURB_Z - 0.85),
     ];
     g.log('🚒 The fire engine screeches up outside. Blaze and Hank run up the garden path, dragging a hose.', 'warn');
+    g.annoyNeighbours(5); // property values!
     b.state = 'fighting';
   } else if (b.state === 'fighting') {
     for (const p of b.crew) fightFire(g, b, p, gdt, min);
@@ -371,6 +375,7 @@ function updateInvestigation(g, gdt, min) {
     inv.plan = evidence(g).sort((a, b) => b.sus - a.sus).slice(0, 5);
     const rooms = [[4, 3], [10, 8], [3, 8], [14, 3]].sort(() => Math.random() - 0.5).slice(0, inv.plan.length ? 1 : 2);
     for (const c of rooms) inv.plan.push({ id: 'look:' + c, cell: c, sus: 0, still: () => true, clear: () => {}, found: null });
+    g.annoyNeighbours(5);
     g.log('🕵️ Inspector Gumshoe steps out, snaps on a pair of gloves and strolls up the path. "Mind if I look around? That wasn\'t a question."', 'warn');
     inv.state = 'searching';
   } else if (inv.state === 'searching') {

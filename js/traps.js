@@ -1,6 +1,8 @@
 // Hidden traps. Floor traps trigger when a sim steps on the tile; object traps are armed
 // flags on furniture (see godPowers in interactions.js) that trigger when the object is used.
 
+import { visitorsNear, visitorOutcome } from './visitors.js';
+
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // Everything shown in the trap palette. `target` says what the player clicks to place it.
@@ -209,6 +211,8 @@ export function fartCloud(g, s, strength = 1) {
     hurt(g, o, rand(8, 16) * boost * strength, 'Fart', '#a8e05a');
   }
   if (victims.length) g.log(`💨 ${s.first} lets one go. ${victims.join(' and ')} ${victims.length > 1 ? 'reel' : 'reels'} in horror.`, 'evil');
+  // Anyone on the doorstep gets it too, and never comes back.
+  if (visitorsNear(g, s.x, s.z, 2.6).length) visitorOutcome(g, 'gassed');
 }
 
 // Piranha bites for anyone in the pool. Returns true if the sim died.

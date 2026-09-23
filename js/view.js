@@ -180,6 +180,7 @@ export class View {
       if (p.kind === 'door') return { kind: 'door', door: g.world.doors.find(d => d.id === p.id) };
       if (p.kind === 'pool') return { kind: 'pool' };
       if (p.kind === 'visitor') return g.visit ? { kind: 'visitor' } : null;
+      if (p.kind === 'house') return { kind: 'house', side: p.side };
       if (p.kind === 'mess') { const mess = g.world.mess.get(p.key); if (mess) return { kind: 'mess', mess }; continue; }
       if (p.kind === 'car') { const car = this.street.cars.find(c => c.id === p.id); if (car && !car.crash) return { kind: 'car', car }; continue; }
       if (p.kind === 'responder') { const person = g.responders.find(r => r.id === p.id); if (person) return { kind: 'responder', person }; continue; }
@@ -207,6 +208,7 @@ export class View {
     this.syncMeteors();
     this.fx.update(dt, time);
     this.street.update(dt, time);
+    this.syncNeighbours();
     this.syncHover(time);
     this.lot.water.material.emissiveIntensity = 0.8 + Math.sin(time * 2) * 0.2;
     const wm = this.lot.water.material.map;
@@ -214,6 +216,18 @@ export class View {
     this.renderer.render(this.scene, this.camera);
     this.syncLabels(dt);
     this.speech.render();
+  }
+
+  // Neighbours' houses: painted in the current family's colours, lit at night, FOR SALE when empty.
+  syncNeighbours() {
+    const houses = this.lot.garden.houses, nb = this.game.neighbours;
+    if (!houses || !nb) return;
+    for (const side of ['west', 'east']) {
+      const h = houses[side], n = nb[side];
+      if (h.family !== n.family) { h.family = n.family; h.walls.color.setHex(n.family.wall); }
+      h.sign.visible = n.state !== 'home';
+      h.glass.emissiveIntensity = n.state === 'home' ? 0.1 + 1.6 * (this.night || 0) : 0;
+    }
   }
 
   updateDaylight() {

@@ -67,6 +67,16 @@ function fireTruckMesh() {
   return g;
 }
 
+function vanMesh() {
+  const g = new THREE.Group();
+  g.add(box(2.5, 1.35, 1.1, 0xf2f2ee, -0.45, 0.95, 0));
+  g.add(box(2.52, 0.18, 1.12, 0x2d6ad9, -0.45, 0.75, 0));
+  g.add(box(0.9, 0.9, 1.05, 0x2d6ad9, 1.25, 0.72, 0));
+  g.add(box(0.05, 0.4, 0.9, 0x223344, 1.71, 0.95, 0));
+  for (const x of [-1.3, 0.2, 1.3]) for (const z of [-0.5, 0.5]) g.add(wheel(x, z));
+  return g;
+}
+
 function policeCarMesh() {
   const g = new THREE.Group();
   g.add(box(1.9, 0.45, 0.9, 0xf4f4f4, 0, 0.45, 0));
@@ -165,7 +175,7 @@ export class Street {
       for (const v of this.game.vehicles) {
         if (Math.abs(v.z - LANES[c.lane].z) > 0.6) continue;
         const along = (v.x - c.mesh.position.x) * c.dir;
-        const d = along - c.half - (v.kind === 'police' ? 0.95 : 1.9);
+        const d = along - c.half - ({ police: 0.95, van: 1.6 }[v.kind] || 1.9);
         if (along > 0 && d < gap) { gap = d; ahead = { speed: 0 }; }
       }
       const want = !ahead || gap > 4 ? c.cruise : gap < CAR_GAP ? 0 : Math.min(c.cruise, ahead.speed + (gap - CAR_GAP) * 0.8);
@@ -339,15 +349,17 @@ export class Street {
       live.add(v.id);
       let m = this.vehicleMeshes.get(v.id);
       if (!m) {
-        m = v.kind === 'police' ? policeCarMesh() : fireTruckMesh();
+        m = v.kind === 'police' ? policeCarMesh() : v.kind === 'van' ? vanMesh() : fireTruckMesh();
         this.scene.add(m);
         this.vehicleMeshes.set(v.id, m);
       }
       m.position.set(v.x, 0, v.z);
       m.rotation.y = v.yaw;
-      const [a, b] = m.userData.beacons;
-      a.material.emissiveIntensity = flash ? 3 : 0.15;
-      b.material.emissiveIntensity = flash ? 0.15 : 3;
+      if (m.userData.beacons) {
+        const [a, b] = m.userData.beacons;
+        a.material.emissiveIntensity = flash ? 3 : 0.15;
+        b.material.emissiveIntensity = flash ? 0.15 : 3;
+      }
     }
     for (const [id, m] of this.vehicleMeshes) {
       if (live.has(id)) continue;
