@@ -8,7 +8,7 @@ export const MIN_PER_SEC = 5; // game minutes per real second at 1x
 // Every cause must have a finite value, or one death can poison the suspicion meter.
 export const DEATH_SUSPICION = {
   Meteor: 0, Fright: 0, Boredom: 2, Laughter: 2, Fart: 3, Slip: 5, Crushed: 6, Fire: 8, Electrocution: 8, Explosion: 10,
-  Fight: 15, Poison: 22, Drowning: 8, Starvation: 10, Piranhas: 25, 'Bear Trap': 25, 'Letter Bomb': 20, 'Car Crash': 3,
+  Fight: 15, Poison: 22, Drowning: 8, Starvation: 10, Piranhas: 25, 'Bear Trap': 25, 'Letter Bomb': 20, 'Car Crash': 3, 'Biker Gang': 2,
 };
 
 export const HOUSE = { x0: 1, z0: 1, x1: 16, z1: 11 };
@@ -145,6 +145,7 @@ export const CAUSES = {
   'Letter Bomb': { icon: '📬', lines: ['finally got some mail. It was the last.', 'opened a parcel marked "DEFINITELY NOT A BOMB".', 'signed for a delivery with their entire body.'] },
   Boredom: { icon: '🥱', lines: ['was bored to death by a four-hour story about crypto.', 'died mid-yawn. The story continues without them.', 'begged for the story to end. It did — for them.'] },
   'Car Crash': { icon: '🚗', lines: ['was in the front garden when a car arrived without its brakes.', 'met a hatchback at forty miles an hour. The hatchback won.', 'was flattened by rush hour, which came early and through the fence.'] },
+  'Biker Gang': { icon: '🏍️', lines: ['was beaten to a pulp by bikers who had never met them.', 'looked at Knuckles funny. Once.', 'was trampled by a man called Tiny.'] },
   Laughter: { icon: '😂', lines: ['laughed so hard their heart simply gave up.', 'died laughing. Genuinely, finally, completely.', 'heard the punchline and never recovered.'] },
 };
 
@@ -167,6 +168,7 @@ export const HEADLINES = {
   'Letter Bomb': ['POSTMAN DENIES EVERYTHING, WHISTLES', 'FINALLY, SOME MAIL THAT ISN\'T A BILL'],
   Boredom: ['MAN DIES DURING STORY; STORY CONTINUES', 'CRYPTO CLAIMS ANOTHER VICTIM (INDIRECTLY)'],
   'Car Crash': ['BRAKES FAIL, FENCE FAILS, RESIDENT FAILS', 'DRIVER "JUST WANTED TO SEE THE GARDEN"'],
+  'Biker Gang': ['BIKER GANG "JUST PASSING THROUGH", SAYS BIKER GANG', 'LOCAL MAN MEETS HELL\'S GRANNIES. LOCAL MAN LOSES'],
   Laughter: ['COMEDIAN "DEVASTATED", ALSO "A LITTLE PROUD"', 'KILLER JOKE CLAIMS ANOTHER VICTIM'],
 };
 export const EPITAPHS = ['Finally quiet.', 'Still owes rent.', 'Died as they lived: annoying.', 'Loved by no one in particular.',

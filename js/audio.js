@@ -4,7 +4,7 @@
 const MUTE_KEY = 'worst-roommates-muted';
 const VOLUME_KEY = 'worst-roommates-volume';
 const AMBIENT_KEY = 'worst-roommates-ambience';
-const MIN_GAP = { blah: 1.1, punch: 0.22, click: 0.06, fire: 0.6, splash: 0.4, fart: 1, death: 0.3, explosion: 0.3, knock: 1.2, siren: 2.4, police: 2.0 };
+const MIN_GAP = { blah: 1.1, punch: 0.22, click: 0.06, fire: 0.6, splash: 0.4, fart: 1, death: 0.3, explosion: 0.3, knock: 1.2, siren: 2.4, police: 2.0, engine: 0.9 };
 
 // Recorded variants per sound: name.mp3, name-2.mp3, ... A random one plays each time.
 const SAMPLE_BANK = {
@@ -375,6 +375,11 @@ export const SOUNDS = {
       a.tone('square', 960, 960, t + i * 0.5, 0.22, 0.04);
       a.tone('square', 740, 740, t + i * 0.5 + 0.25, 0.22, 0.04);
     }
+  },
+  engine(a, t) {
+    const o = a.tone('sawtooth', 62, 118, t, 0.9, 0.1, 0.05);
+    a.vibrato(o, t, 28, 14, 0.9);
+    a.noise(t, 0.8, 0.05, 'lowpass', 300, 180);
   },
   airhorn(a, t) {
     for (const f of [440, 554, 659]) a.tone('sawtooth', f, f * 0.98, t, 0.9, 0.11, 0.01);

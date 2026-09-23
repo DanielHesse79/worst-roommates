@@ -1,8 +1,9 @@
-// Visitors who knock on the front door. They can't be harmed (they never enter the house), but they are
-// the worst possible witnesses at the worst possible moment, and they remember how they were treated.
+// Visitors who knock on the front door. They're the worst possible witnesses at the worst possible moment,
+// they remember how they were treated, and a trap on the garden path hurts them as much as anyone.
 import { GRID_H } from './data.js';
 import { requestInvestigation } from './emergency.js';
-import { houseDoor, visitingSide, annoyNeighbour, pleaseNeighbour } from './neighbours.js';
+import { houseDoor, visitingSide, annoyNeighbour, pleaseNeighbour, neighbourBereaved } from './neighbours.js';
+import { outsiderTrap } from './outsiders.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -118,7 +119,7 @@ function spawn(g) {
   for (let i = 0; i < type.count; i++) {
     const route = side ? routeFrom(side, i, type.count) : [doorSpot(i, type.count)];
     const [x, z] = side ? houseDoor(side) : streetSpot(i, type.count);
-    people.push({ id: 'v' + nextId++, first: type.name, x, z, route, moving: true, facing: Math.PI });
+    people.push({ id: 'v' + nextId++, kind: 'visitor', visitKind: kind, first: type.name, x, z, route, moving: true, facing: Math.PI, health: 100 });
   }
   g.visit = { kind, type, side, people, state: 'arrive', wait: 0, knockT: 0 };
   g.log(`🚪 ${type.icon} ${type.arrive}`, 'warn');
@@ -168,14 +169,16 @@ function senseHouse(g, v) {
   return false;
 }
 
-function walk(p, gdt) {
-  let budget = SPEED * gdt;
+function walk(g, p, gdt) {
+  if (p.trapped > 0) { p.moving = false; return false; }
+  let budget = (p.onFire ? 3.2 : SPEED) * gdt;
   while (budget > 0 && p.route.length) {
     const [x, z] = p.route[0];
     const dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz);
     if (d > 0.001) p.facing = Math.atan2(dx, dz);
     if (d <= budget) { p.x = x; p.z = z; budget -= d; p.route.shift(); }
     else { p.x += dx / d * budget; p.z += dz / d * budget; budget = 0; }
+    if (checkTrap(g, p)) break;
   }
   p.moving = p.route.length > 0;
   if (!p.moving) p.facing = Math.PI;
@@ -189,7 +192,8 @@ export function updateVisitors(g, gdt, min) {
   }
   const v = g.visit;
   let allThere = true;
-  for (const p of v.people) if (!walk(p, gdt)) allThere = false;
+  for (const p of [...v.people]) if (!walk(g, p, gdt)) allThere = false;
+  if (g.visit !== v) return;
   if (v.state === 'arrive' && allThere) { v.state = 'wait'; v.wait = 0; }
   if (v.state !== 'leave' && senseHouse(g, v)) return;
   if (v.state === 'wait') {
@@ -201,6 +205,44 @@ export function updateVisitors(g, gdt, min) {
   if (v.state === 'leave' && allThere) {
     g.visit = null;
     scheduleNextVisit(g);
+  }
+}
+
+// A trap on the garden path. The visit is over, one way or another.
+function checkTrap(g, p) {
+  const cx = Math.floor(p.x), cz = Math.floor(p.z), key = cx + ',' + cz;
+  if (p.cell === key) return false;
+  p.cell = key;
+  const t = g.world.trapAt(cx, cz);
+  if (!t) return false;
+  g.world.removeTrap(t);
+  const dead = outsiderTrap(g, p, t);
+  if (!dead) {
+    g.log(t.type === 'beartrap' ? `🪤 ${p.first} steps into a bear trap on your garden path and screams the street awake.`
+      : `🍌 ${p.first} goes flying on your garden path and lands in a heap.`, 'evil');
+    if (t.type === 'beartrap' && !t.by) g.addSuspicion(10, '🕵️ A bear trap on the path to your front door. The visitors will be telling everyone.');
+    if (g.visit && g.visit.kind === 'neighbour') annoyNeighbour(g, g.visit.side, 30);
+    dismissVisitors(g);
+  }
+  return true;
+}
+
+const MOURNERS = {
+  witnesses: 'The surviving Witness runs, screaming about the end times. For once, they have a point.',
+  mormons: 'The other Elder Johnson runs for his bicycle and does not look back.',
+};
+
+// A visitor has died on your property. Whoever came with them flees; none of their kind will be back.
+export function visitorDied(g, p) {
+  const v = g.visit;
+  if (!v) return;
+  v.people = v.people.filter(o => o !== p);
+  if (v.kind === 'neighbour') neighbourBereaved(g, v.side, p.first);
+  else if (v.kind !== 'cop') g.visitBans.add(v.kind);
+  if (!v.people.length) { g.visit = null; scheduleNextVisit(g); return; }
+  if (v.state !== 'leave') {
+    if (MOURNERS[v.kind]) g.log(`${v.type.icon} ${MOURNERS[v.kind]}`, 'evil');
+    dismissVisitors(g);
   }
 }
 

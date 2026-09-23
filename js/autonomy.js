@@ -47,6 +47,7 @@ function pickEvil(s, g) {
   opts.push({ w: 0.3, def: objAct('fridge', 'poison'), target: o('fridge') });
   opts.push({ w: 0.5, def: objAct('computer', 'darkarts'), target: o('computer') });
   if (g.isNight) opts.push({ w: 0.6, def: objAct('stereo', 'blast'), target: o('stereo') });
+  if (s.has('hotheaded')) opts.push({ w: 0.06, def: objAct('computer', 'insultbikers'), target: o('computer') });
   opts.push({ w: 0.25, def: objAct('fridge', 'fish'), target: o('fridge') });
   opts.push({ w: 0.2, def: objAct('fridge', 'trash'), target: o('fridge') });
   opts.push({ w: 0.2, def: objAct('table', 'toenails'), target: o('table') });

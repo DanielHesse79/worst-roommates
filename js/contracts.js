@@ -6,7 +6,7 @@ export const CAUSE_VERB = {
   Poison: 'die of poison', Fight: 'die in a fight', Meteor: 'be hit by a meteor',
   Slip: 'slip to their death', Crushed: 'be crushed', Explosion: 'be blown up', Piranhas: 'be eaten by piranhas',
   Fright: 'be scared to death', 'Bear Trap': 'die in a bear trap', Fart: 'die from a silent-but-deadly one',
-  'Letter Bomb': 'open a letter bomb', Boredom: 'be bored to death', Laughter: 'die laughing', 'Car Crash': 'be hit by a car',
+  'Letter Bomb': 'open a letter bomb', Boredom: 'be bored to death', Laughter: 'die laughing', 'Car Crash': 'be hit by a car', 'Biker Gang': 'be beaten up by bikers',
 };
 
 const CAUSE_PAST = {
@@ -14,7 +14,7 @@ const CAUSE_PAST = {
   Poison: 'was poisoned', Fight: 'was killed in a fight', Meteor: 'was flattened by a meteor',
   Slip: 'slipped and died', Crushed: 'was crushed', Explosion: 'was blown up', Piranhas: 'was eaten by piranhas',
   Fright: 'was scared to death', 'Bear Trap': 'died in a bear trap', Fart: 'was gassed',
-  'Letter Bomb': 'was killed by a letter bomb', Boredom: 'was bored to death', Laughter: 'died laughing', 'Car Crash': 'was hit by a car',
+  'Letter Bomb': 'was killed by a letter bomb', Boredom: 'was bored to death', Laughter: 'died laughing', 'Car Crash': 'was hit by a car', 'Biker Gang': 'was beaten up by a biker gang',
 };
 
 export const CONTRACTS = [

@@ -2,6 +2,7 @@
 // flags on furniture (see godPowers in interactions.js) that trigger when the object is used.
 
 import { visitorsNear, visitorOutcome } from './visitors.js';
+import { outsidersNear, hurtOutsider, setOnFire } from './outsiders.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -113,19 +114,28 @@ export function onEnterCell(g, s) {
   const shelf = w.objects.get('bookshelf');
   if (shelf.wobbly && !shelf.toppled) {
     const [bx, bz] = shelf.cells[0];
-    if (Math.max(Math.abs(bx - s.cx), Math.abs(bz - s.cz)) <= 1) {
-      shelf.toppled = true;
-      shelf.wobbly = false;
-      g.view.burst(bx + 0.5, bz + 0.5, 'dust');
-      g.view.shake = 0.3;
-      g.sfx('crash');
-      g.log(`📚 The bookshelf groans... and topples onto ${s.name}!`, 'evil');
-      for (const o of g.sims) {
-        if (!o.alive || o.status.swimming) continue;
-        if (Math.max(Math.abs(bx - o.cx), Math.abs(bz - o.cz)) > 1) continue;
-        if (!hurt(g, o, rand(55, 95), 'Crushed', '#d9b38c')) { o.endAction(); o.status.passedOut = 45; }
-      }
-    }
+    if (Math.max(Math.abs(bx - s.cx), Math.abs(bz - s.cz)) <= 1) toppleShelf(g, `📚 The bookshelf groans... and topples onto ${s.name}!`);
+  }
+}
+
+// Down it comes, on whoever is standing next to it: roommates and outsiders alike.
+export function toppleShelf(g, msg) {
+  const shelf = g.world.objects.get('bookshelf');
+  if (shelf.toppled) return;
+  shelf.toppled = true;
+  shelf.wobbly = false;
+  const [bx, bz] = shelf.cells[0];
+  g.view.burst(bx + 0.5, bz + 0.5, 'dust');
+  g.view.shake = 0.3;
+  g.sfx('crash');
+  g.log(msg, 'evil');
+  for (const o of g.sims) {
+    if (!o.alive || o.status.swimming) continue;
+    if (Math.max(Math.abs(bx - o.cx), Math.abs(bz - o.cz)) > 1) continue;
+    if (!hurt(g, o, rand(55, 95), 'Crushed', '#d9b38c')) { o.endAction(); o.status.passedOut = 45; }
+  }
+  for (const p of outsidersNear(g, bx + 0.5, bz + 0.5, 1.6)) {
+    if (!hurtOutsider(g, p, rand(55, 95), 'Crushed')) p.trapped = 20;
   }
 }
 
@@ -151,6 +161,10 @@ export function explode(g, x, z, { cause = 'Explosion', suspicion = 12, radius =
       s.endAction();
       if (!s.status.swimming) s.status.onFire = 20;
     }
+  }
+  for (const p of outsidersNear(g, x, z, radius)) {
+    const d = Math.hypot(p.x - x, p.z - z);
+    if (!hurtOutsider(g, p, 25 + 110 * (1 - d / radius), cause)) setOnFire(g, p);
   }
   for (let dx = -1; dx <= 1; dx++) {
     for (let dz = -1; dz <= 1; dz++) if (Math.random() < 0.5) g.world.ignite(Math.floor(x) + dx, Math.floor(z) + dz, lawn);
@@ -211,6 +225,7 @@ export function fartCloud(g, s, strength = 1) {
     hurt(g, o, rand(8, 16) * boost * strength, 'Fart', '#a8e05a');
   }
   if (victims.length) g.log(`💨 ${s.first} lets one go. ${victims.join(' and ')} ${victims.length > 1 ? 'reel' : 'reels'} in horror.`, 'evil');
+  for (const p of outsidersNear(g, s.x, s.z, 2)) hurtOutsider(g, p, rand(8, 16) * boost * strength, 'Fart');
   // Anyone on the doorstep gets it too, and never comes back.
   if (visitorsNear(g, s.x, s.z, 2.6).length) visitorOutcome(g, 'gassed');
 }

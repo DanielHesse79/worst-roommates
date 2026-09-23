@@ -77,6 +77,20 @@ function vanMesh() {
   return g;
 }
 
+function bikeMesh() {
+  const g = new THREE.Group();
+  for (const x of [-0.45, 0.45]) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 12), mat(0x151515));
+    w.rotation.x = Math.PI / 2;
+    w.position.set(x, 0.22, 0);
+    g.add(w);
+  }
+  g.add(box(0.8, 0.22, 0.2, 0x1a1a1a, 0, 0.45, 0), box(0.35, 0.2, 0.24, 0xb0b0b8, -0.05, 0.36, 0));
+  g.add(box(0.3, 0.08, 0.22, 0x2a2a2a, -0.2, 0.6, 0), box(0.05, 0.05, 0.5, 0xc8c8d0, 0.38, 0.72, 0));
+  g.add(box(0.06, 0.08, 0.1, 0xfff2c0, 0.46, 0.55, 0, { emissive: 0xfff2c0, emissiveIntensity: 0.6 }));
+  return g;
+}
+
 function policeCarMesh() {
   const g = new THREE.Group();
   g.add(box(1.9, 0.45, 0.9, 0xf4f4f4, 0, 0.45, 0));
@@ -96,6 +110,9 @@ function hat(kind) {
     h.add(cyl(0.28, 0.3, 0.03, 0xc81e1e, 0, 0.08, 0, 16));
     h.add(cyl(0.16, 0.2, 0.17, 0xc81e1e, 0, 0.17, 0, 16));
     h.add(box(0.07, 0.09, 0.03, 0xffd24a, 0, 0.19, 0.19));
+  } else if (kind === 'biker') {
+    h.add(cyl(0.18, 0.19, 0.12, 0x1a1a1a, 0, 0.12, 0, 16));
+    h.add(cyl(0.185, 0.185, 0.05, 0xb0201a, 0, 0.09, 0, 16));
   } else {
     h.add(cyl(0.27, 0.27, 0.025, 0x3d2f22, 0, 0.1, 0, 16));
     h.add(cyl(0.15, 0.17, 0.16, 0x3d2f22, 0, 0.19, 0, 16));
@@ -107,6 +124,7 @@ function hat(kind) {
 const RESPONDER_LOOK = {
   firefighter: { shirt: 0xd9a21b, icon: '🧯', busy: { spray: '💦' } },
   detective: { shirt: 0x9a7b4f, icon: '🕵️', busy: { search: '🔍', idle: '☕' } },
+  biker: { shirt: 0x1c1c1c, icon: '🏍️', busy: { punch: '💢' } },
 };
 
 // A person model driven directly (no Sim behind it).
@@ -287,7 +305,9 @@ export class Street {
         return { p, shirt: look.shirt, hat: p.kind, icon: (!p.moving && look.busy[p.pose]) || look.icon, pick: { kind: 'responder', id: p.id } };
       }),
     ];
-    for (const { p, shirt, hat: hatKind, icon, pick } of people) {
+    for (const { p, shirt, hat: hatKind, icon: baseIcon, pick } of people) {
+      // Whatever is currently happening to them trumps their job.
+      const icon = p.onFire ? '🔥' : p.trapped > 0 ? '🤕' : p.poisoned > 0 ? '🤢' : p.immortal ? '♾️' : baseIcon;
       live.add(p.id);
       let m = this.visitorMeshes.get(p.id);
       if (!m) {
@@ -299,6 +319,7 @@ export class Street {
       }
       m.root.position.set(p.x, 0, p.z);
       m.root.rotation.y = p.facing;
+      if (m.fire) m.fire.visible = !!p.onFire;
       const s = p.moving ? Math.sin(time * 9) : 0;
       m.legL.rotation.x = s * 0.6; m.legR.rotation.x = -s * 0.6;
       m.head.rotation.x = 0;
@@ -308,6 +329,9 @@ export class Street {
           const f = p.facing;
           for (let i = 0; i < 2; i++) this.view.fx.jet(p.x + Math.sin(f) * 0.45, 0.85, p.z + Math.cos(f) * 0.45, p.aim[0], p.aim[1]);
         }
+      } else if (p.pose === 'punch' && !p.moving) {
+        m.armR.rotation.x = -1.5 + Math.max(0, Math.sin(time * 16)) * 0.9;
+        m.armL.rotation.x = -1.5 + Math.max(0, Math.sin(time * 16 + Math.PI)) * 0.9;
       } else if (p.pose === 'search' && !p.moving) {
         m.head.rotation.x = 0.45;
         m.armL.rotation.x = 0;
@@ -349,7 +373,7 @@ export class Street {
       live.add(v.id);
       let m = this.vehicleMeshes.get(v.id);
       if (!m) {
-        m = v.kind === 'police' ? policeCarMesh() : v.kind === 'van' ? vanMesh() : fireTruckMesh();
+        m = v.kind === 'police' ? policeCarMesh() : v.kind === 'van' ? vanMesh() : v.kind === 'bike' ? bikeMesh() : fireTruckMesh();
         this.scene.add(m);
         this.vehicleMeshes.set(v.id, m);
       }

@@ -3,20 +3,31 @@ import { Sim } from './sim.js';
 import { View } from './view.js';
 import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
-import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS } from './data.js';
+import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H } from './data.js';
 import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress } from './contracts.js';
-import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, floorTrapPower, fartCloud, carCrash, FLOOR_TRAPS } from './traps.js';
+import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, floorTrapPower, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf } from './traps.js';
 import { findPower, cleanupPower } from './interactions.js';
 import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
 import { SHOP, LOCKED_TRAPS, contractReward } from './shop.js';
-import { updateVisitors, scheduleNextVisit, visitorsNear, dismissVisitors } from './visitors.js';
+import { updateVisitors, scheduleNextVisit, visitorsNear, dismissVisitors, visitorDied } from './visitors.js';
+import { updateOutsiders } from './outsiders.js';
+import { updateGang } from './gang.js';
 import { initNeighbours, updateNeighbours, annoyNeighbour, pleaseNeighbour, SIDES } from './neighbours.js';
-import { updateEmergency, resetEmergency, requestInvestigation, endInvestigation, respondersNear } from './emergency.js';
+import { updateEmergency, resetEmergency, requestInvestigation, endInvestigation, respondersNear, responderDown } from './emergency.js';
 
 const SPEEDS = [0, 1, 3, 8];
 const START_SPOTS = [[9, 8], [11, 8], [10, 7], [12, 8], [8, 7], [13, 7]];
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+// How the people who weren't on the list go.
+const OUTSIDER_DEATHS = {
+  Fire: 'burned to death on your property.', 'Bear Trap': 'bled out in a bear trap on your garden path.',
+  Slip: 'slipped, cracked their head and never got up.', Crushed: 'was flattened by a bookshelf full of true crime.',
+  Explosion: 'was blown clean across the garden.', 'Letter Bomb': 'opened the parcel. The parcel won.',
+  'Car Crash': 'was hit by a car that had no business being in the garden.', Electrocution: 'poked the wrong wire.',
+  Poison: 'tasted the evidence.', Fart: 'was gassed to death on the doorstep.', 'Biker Gang': 'was beaten to death by a biker gang.',
+  Fight: 'lost a fight with one of your roommates.',
+};
 // Actions that put an open flame in a sim's hands.
 const FLAME_ACTIONS = new Set(['cook', 'bake', 'grill', 'weeds', 'light', 'stoke']);
 
@@ -86,6 +97,10 @@ class Game {
     scheduleNextVisit(this);
     initNeighbours(this);
     resetEmergency(this);
+    this.gang = null;
+    this.collateral = 0;
+    this.inspectorsLost = 0;
+    this.pendingInquiry = null;
     this.meteors = [];
     this.ghosts = [];
     this.armedTrap = null;
@@ -274,6 +289,35 @@ class Game {
   }
 
   crashCar(car) { this.view.street.crash(car); }
+  explodeAt(x, z, opts) { explode(this, x, z, opts); }
+  toppleShelf(msg) { toppleShelf(this, msg); }
+
+  // Someone who wasn't on the list died here: a visitor, a neighbour, a firefighter, an inspector, a biker.
+  // They get a grave in the garden too, and the authorities take a much closer interest.
+  outsiderDied(p, cause) {
+    const name = p.title || p.first;
+    const kind = p.kind === 'visitor' ? p.visitKind : p.kind;
+    const cx = Math.max(0, Math.min(GRID_W - 1, Math.floor(p.x))), cz = Math.max(0, Math.min(GRID_H - 1, Math.floor(p.z)));
+    const tomb = this.world.addTombstone(cx, cz, { id: p.id, name }, cause);
+    tomb.epitaph = kind === 'biker' ? 'Rode hard. Died harder. Nobody came.' : kind === 'detective' ? 'Case closed.' : pick(EPITAPHS);
+    this.view.spawnReaper(p);
+    this.sfx('death');
+    this.collateral++;
+    const info = CAUSES[cause] || CAUSES.Fight;
+    this.log(`💀 ${name} ${OUTSIDER_DEATHS[cause] || pick(info.lines)} (Collateral damage: ${name} was never on the list.)`, 'death');
+    if (kind === 'biker') {
+      const session = this.session;
+      setTimeout(() => { if (this.session === session) this.log('💀 The Grim Reaper, collecting a biker: "Ugh. The leather. The smell. Every single time."', 'dim'); }, 1000);
+    }
+    this.ui.toast(`${info.icon} ${name} died: ${cause}. Collateral damage!`);
+    if (p.kind === 'visitor') visitorDied(this, p);
+    else responderDown(this, p);
+    const sus = { detective: 35, cop: 35, firefighter: 15, neighbour: 25, biker: 0 }[kind] ?? 20;
+    if (this.contract) this.addSuspicion(sus, sus ? `🕵️ ${name} is dead, on your property. People will ask questions. (+${sus} suspicion)` : null);
+    else this.score += 50;
+    if (kind !== 'biker' && kind !== 'detective') requestInvestigation(this, `the death of ${name}`);
+    this.ui.refresh();
+  }
   carCrash(x, z) { carCrash(this, x, z); }
 
   // Any open flame within r cells of the sim: fire, lit candles or fireplace, a glowing heater,
@@ -539,6 +583,8 @@ class Game {
     updateVisitors(this, gdt, min);
     updateNeighbours(this, gdt, min);
     updateEmergency(this, gdt, min);
+    updateGang(this, gdt, min);
+    updateOutsiders(this, gdt, min);
     if (this.hackLockUntil && this.clock > this.hackLockUntil) {
       this.hackLockUntil = 0;
       for (const d of this.world.doors) if (d.hackLocked) { d.bricked = false; d.hackLocked = false; }

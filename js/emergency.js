@@ -3,6 +3,7 @@
 // grid directly, can't be harmed, and see everything.
 import { GRID_W, GRID_H } from './data.js';
 import { cellKey } from './world.js';
+import { outsiders, outsiderTrap, hurtOutsider, setOnFire } from './outsiders.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -14,6 +15,8 @@ const FIRE_PARK_X = 6.5, POLICE_PARK_X = 15;
 const REACH = 2.3;                        // hose range, in cells
 const SPRAY_MIN = 1.2;                    // game minutes of hosing per burning cell
 const POLICE_COOLDOWN = 600;              // quiet minutes after a search before another one
+// If an inspector dies on the job, the station sends the next one on the list.
+const INSPECTORS = ['Gumshoe', 'Gumshoe Jr.', 'Hawkins', 'Sniffington', 'Poirot-Adjacent', 'Clueless'];
 let nextId = 1;
 
 const CALLERS = [
@@ -31,8 +34,8 @@ const FIRE_REPORTS = [
 
 // ---------- shared helpers ----------
 
-function responder(g, kind, first, title, x, z) {
-  const p = { id: 'r' + nextId++, kind, first, title, x, z, facing: Math.PI, moving: false, pose: 'idle', route: [], pause: 0 };
+export function responder(g, kind, first, title, x, z) {
+  const p = { id: 'r' + nextId++, kind, first, title, x, z, facing: Math.PI, moving: false, pose: 'idle', route: [], pause: 0, health: 100 };
   g.responders.push(p);
   return p;
 }
@@ -46,7 +49,7 @@ export function vehicle(g, kind, parkX, side = kind === 'police' ? 1 : -1, z = C
   return v;
 }
 
-const SIRENS = { police: 'police', firetruck: 'siren' };
+const SIRENS = { police: 'police', firetruck: 'siren', bike: 'engine' };
 
 export function driveVehicle(g, v, gdt) {
   if (v.state === 'arrive') {
@@ -68,7 +71,7 @@ export function driveVehicle(g, v, gdt) {
 const gateCell = w => w.nearestWalkable(10, GRID_H - 1);
 
 // Plans a walk to the cell (or the nearest free cell next to it). False if there's no way in.
-function routeTo(g, p, cx, cz) {
+export function routeTo(g, p, cx, cz) {
   const w = g.world;
   const [tx, tz] = w.nearestWalkable(cx, cz);
   const outside = !w.inBounds(Math.floor(p.x), Math.floor(p.z));
@@ -90,7 +93,9 @@ function routeHome(g, p, v, slot) {
   p.home = true;
 }
 
-function walk(g, p, gdt, speed) {
+export function walk(g, p, gdt, speed) {
+  // Stuck in a trap, or on fire and running for the street (outsiders.js moves them then).
+  if (p.trapped > 0 || p.onFire) { p.moving = false; return; }
   let budget = speed * gdt;
   while (budget > 0 && p.route.length) {
     const [x, z] = p.route[0];
@@ -100,6 +105,7 @@ function walk(g, p, gdt, speed) {
       p.x = x; p.z = z; budget -= d;
       p.route.shift();
       if (!p.home) stepOnTrap(g, p);
+      if (p.dead || p.trapped > 0) break;
     } else {
       p.x += dx / d * budget; p.z += dz / d * budget; budget = 0;
     }
@@ -114,21 +120,26 @@ function exposed(g, msg, sus) {
   if (sus > 0) g.addSuspicion(sus);
 }
 
+// Traps hurt whoever steps in them. Firefighters and detectives also report what they found.
 function stepOnTrap(g, p) {
   const t = g.world.trapAt(Math.floor(p.x), Math.floor(p.z));
   if (!t) return;
   g.world.removeTrap(t);
+  const dead = outsiderTrap(g, p, t);
+  if (p.kind === 'biker') {
+    if (!dead) g.log(t.type === 'beartrap' ? `🪤 ${p.first} stomps straight into a bear trap and invents several new swear words.` : `🍌 ${p.first} goes down like a sack of spanners.`, 'evil');
+    return;
+  }
   const inv = g.investigation;
   if (inv) { inv.found++; inv.done.add('trap:' + cellKey(t.x, t.z)); }
+  const sus = { peel: t.by ? 0 : 4, wax: 8, beartrap: 15 }[t.type];
+  if (dead) { if (sus) g.addSuspicion(sus); return; }
   if (t.type === 'peel') {
-    g.sfx('slip');
-    exposed(g, `🍌 ${p.title} slips on a banana peel, lands flat on his back and stares at the sky, questioning his career.`, t.by ? 0 : 4);
+    exposed(g, `🍌 ${p.title} slips on a banana peel, lands flat on his back and stares at the sky, questioning his career.`, sus);
   } else if (t.type === 'wax') {
-    g.sfx('slip');
-    exposed(g, `🧽 ${p.title} skids across a suspiciously waxed floor and lies there, staring at the ceiling, writing a report in his head.`, 8);
+    exposed(g, `🧽 ${p.title} skids across a suspiciously waxed floor and lies there, staring at the ceiling, writing a report in his head.`, sus);
   } else {
-    g.sfx('snap');
-    exposed(g, `🪤 ${p.title} steps into a bear trap hidden in the lawn. His steel-toe boot survives. Your plausible deniability does not.`, 15);
+    exposed(g, `🪤 ${p.title} steps into a bear trap hidden in the lawn. He's stuck, bleeding and very, very angry.`, sus);
   }
 }
 
@@ -194,6 +205,15 @@ function fightFire(g, b, p, gdt, min) {
       g.log(`🧯 ${p.title} blasts ${s.first} with the hose. ${s.first} is no longer on fire, just furious and damp.`, 'dim');
     }
   }
+  for (const o of outsiders(g)) {
+    if (o.onFire && !o.dead && Math.hypot(o.x - p.x, o.z - p.z) < REACH + 0.5) {
+      o.onFire = false;
+      o.fleeRoute = null;
+      if (g.view) g.view.burst(o.x, o.z, 'splash');
+      g.log(`🧯 ${p.title} hoses down ${o.title || o.first}. Crispy, but alive.`, 'dim');
+    }
+  }
+  if (p.trapped > 0) return;
   if (p.pause > 0) { p.pause -= min; p.pose = 'idle'; p.aim = null; return; }
   if (p.shuffle) { walk(g, p, gdt, 2.6); if (!p.route.length) p.shuffle = false; return; }
   const flame = nearestFlame(w, p, REACH);
@@ -258,12 +278,20 @@ function updateBrigade(g, gdt, min) {
     g.annoyNeighbours(5); // property values!
     b.state = 'fighting';
   } else if (b.state === 'fighting') {
+    b.crew = b.crew.filter(p => !p.dead);
     for (const p of b.crew) fightFire(g, b, p, gdt, min);
-    if (w.fire.size) return;
+    if (w.fire.size && b.crew.length) return;
+    if (!b.crew.length) {
+      g.log("🚒 The fire engine's radio crackles, unanswered. The driver takes the engine back to the station for reinforcements.", 'warn');
+      b.truck.state = 'leave';
+      b.state = 'gone';
+      return;
+    }
     g.log(`🚒 The fire is out. Chief's report: "${pick(FIRE_REPORTS)}"`, 'dim');
     b.crew.forEach((p, i) => { p.aim = null; routeHome(g, p, b.truck, i ? 0.5 : -0.5); });
     b.state = 'leaving';
   } else if (b.state === 'leaving') {
+    b.crew = b.crew.filter(p => !p.dead);
     for (const p of b.crew) walk(g, p, gdt, 2.6);
     if (b.crew.some(p => p.route.length)) return;
     g.responders = g.responders.filter(p => !b.crew.includes(p));
@@ -280,7 +308,30 @@ function updateBrigade(g, gdt, min) {
 // Everything the detective might find, where it is, and how bad it looks.
 function evidence(g) {
   const w = g.world, out = [];
-  const add = (id, cell, sus, still, clear, found) => out.push({ id, cell, sus, still, clear, found });
+  const add = (id, cell, sus, still, clear, found, bite) => out.push({ id, cell, sus, still, clear, found, bite });
+  // Poking at your handiwork is dangerous: sometimes it goes off in his face.
+  const at0 = o => [o.cells[0][0] + 0.5, o.cells[0][1] + 0.5];
+  const gas = o => ({ chance: 0.35, run: p => {
+    w.ignite(o.cells[0][0], o.cells[0][1]);
+    setOnFire(g, p);
+    g.log(`🔥 ${p.title} leans in to sniff the loosened gas valve with his pipe still lit. WHOOMPH.`, 'evil');
+  } });
+  const wires = o => ({ chance: 0.35, run: p => {
+    g.sfx('zap');
+    if (g.view) g.view.burst(p.x, p.z, 'sparks');
+    g.log(`⚡ ${p.title} prods the frayed wire behind the ${o.name} with his pen. His moustache stands on end.`, 'evil');
+    hurtOutsider(g, p, rand(45, 95), 'Electrocution');
+  } });
+  const taste = { chance: 0.25, run: p => {
+    p.poisoned = 90;
+    g.log(`👅 ${p.title} dabs a finger in the leftovers and tastes it. Professional habit. Bad habit.`, 'evil');
+  } };
+  const boom = (o, cause) => ({ chance: cause === 'Letter Bomb' ? 0.5 : 0.3, run: p => {
+    const [x, z] = at0(o);
+    if (cause === 'Letter Bomb') { o.bomb = false; o.flagUp = false; } else o.fireworks = false;
+    g.explodeAt(x, z, { cause, suspicion: 0, radius: 2.2, lawn: cause === 'Letter Bomb',
+      msg: cause === 'Letter Bomb' ? `📬💥 ${p.title} opens the ticking parcel "just to check it is a bomb". It is.` : `🎆💥 ${p.title} pokes around in the ${o.name} using a lighter for light.` });
+  } });
   for (const t of w.traps.values()) {
     const k = cellKey(t.x, t.z);
     if (t.by) continue; // rubbish a roommate dropped isn't your handiwork
@@ -301,17 +352,19 @@ function evidence(g) {
         vanity: 'reads the hairspray can: "EXTRA HOLD. EXTRA FLAMMABLE." The second line is handwritten.',
         shed: "finds the weed torch's gas hose neatly slit with a knife.",
       }[o.type] || `finds the wiring behind the ${o.name} stripped bare. "Mice," says nobody.`;
-      add('sab:' + o.id, at, 12, () => o.sabotaged, () => { o.sabotaged = false; }, found);
+      const bite = o.type === 'stove' || o.type === 'grill' ? gas(o) : o.type === 'tv' || o.type === 'tub' ? wires(o) : null;
+      add('sab:' + o.id, at, 12, () => o.sabotaged, () => { o.sabotaged = false; }, found, bite);
     }
     if (o.flour) add('flour:' + o.id, at, 8, () => o.flour, () => { o.flour = false; }, 'finds flour on every surface of the kitchen, including the ceiling. "Baking, was it?"');
     if (o.poisoned > 0) {
-      if (o.untraceable) add('tox:' + o.id, at, 0, () => o.poisoned > 0, () => {}, `swabs the ${o.name}. Clean. Dr. Asraa Z's chemistry is, as always, undetectable.`);
-      else add('tox:' + o.id, at, 15, () => o.poisoned > 0, () => { o.poisoned = 0; }, `swabs the ${o.name}. The swab turns a colour swabs should never turn.`);
+      if (o.untraceable) add('tox:' + o.id, at, 0, () => o.poisoned > 0, () => {}, `swabs the ${o.name}. Clean. Dr. Asraa Z's chemistry is, as always, undetectable.`, taste);
+      else add('tox:' + o.id, at, 15, () => o.poisoned > 0, () => { o.poisoned = 0; }, `swabs the ${o.name}. The swab turns a colour swabs should never turn.`, taste);
     }
     if (o.chili > 0) add('chili:' + o.id, at, 3, () => o.chili > 0, () => { o.chili = 0; }, "confiscates Grandma's chili as a biohazard.");
-    if (o.fireworks) add('fw:' + o.id, at, 10, () => o.fireworks, () => { o.fireworks = false; }, `pulls a bundle of fireworks out of the ${o.name}. "Planning a party?"`);
-    if (o.bomb) add('bomb:' + o.id, at, 18, () => o.bomb, () => { o.bomb = false; o.flagUp = false; }, 'opens the mailbox and finds a ticking parcel. The bomb squad is not amused.');
-    if (o.wobbly && !o.toppled) add('shelf:' + o.id, at, 8, () => o.wobbly && !o.toppled, () => { o.wobbly = false; }, 'notices the bookshelf brackets are unscrewed. The screws are in a neat little pile.');
+    if (o.fireworks) add('fw:' + o.id, at, 10, () => o.fireworks, () => { o.fireworks = false; }, `pulls a bundle of fireworks out of the ${o.name}. "Planning a party?"`, boom(o, 'Explosion'));
+    if (o.bomb) add('bomb:' + o.id, at, 18, () => o.bomb, () => { o.bomb = false; o.flagUp = false; }, 'opens the mailbox and finds a ticking parcel. The bomb squad is not amused.', boom(o, 'Letter Bomb'));
+    if (o.wobbly && !o.toppled) add('shelf:' + o.id, at, 8, () => o.wobbly && !o.toppled, () => { o.wobbly = false; }, 'notices the bookshelf brackets are unscrewed. The screws are in a neat little pile.',
+      { chance: 0.5, run: p => g.toppleShelf(`📚 ${p.title} gives the wobbly bookshelf a firm, investigative shove.`) });
   }
   for (const d of w.doors) {
     if (!d.bricked || d.hackLocked) continue;
@@ -370,16 +423,18 @@ function updateInvestigation(g, gdt, min) {
   } else if (inv.state === 'driving') {
     driveVehicle(g, inv.car, gdt);
     if (inv.car.state !== 'parked') return;
-    inv.detective = responder(g, 'detective', 'Gumshoe', 'Inspector Gumshoe', inv.car.x - 0.6, CURB_Z - 0.85);
+    const name = INSPECTORS[(g.inspectorsLost || 0) % INSPECTORS.length];
+    inv.detective = responder(g, 'detective', name, `Inspector ${name}`, inv.car.x - 0.6, CURB_Z - 0.85);
     // He's thorough, not tireless: the five most damning things, then a look around.
     inv.plan = evidence(g).sort((a, b) => b.sus - a.sus).slice(0, 5);
     const rooms = [[4, 3], [10, 8], [3, 8], [14, 3]].sort(() => Math.random() - 0.5).slice(0, inv.plan.length ? 1 : 2);
     for (const c of rooms) inv.plan.push({ id: 'look:' + c, cell: c, sus: 0, still: () => true, clear: () => {}, found: null });
     g.annoyNeighbours(5);
-    g.log('🕵️ Inspector Gumshoe steps out, snaps on a pair of gloves and strolls up the path. "Mind if I look around? That wasn\'t a question."', 'warn');
+    g.log(`🕵️ ${inv.detective.title} steps out, snaps on a pair of gloves and strolls up the path. "Mind if I look around? That wasn't a question."`, 'warn');
     inv.state = 'searching';
   } else if (inv.state === 'searching') {
     const p = inv.detective;
+    if (p.trapped > 0 || p.onFire) return;
     if (p.pause > 0) { p.pause -= min; p.pose = 'idle'; p.moving = false; return; }
     if (p.route.length) { walk(g, p, gdt, 2.2); return; }
     if (sidestep(g, p)) return;
@@ -390,15 +445,18 @@ function updateInvestigation(g, gdt, min) {
       if (inv.examine > 0) return;
       const s = inv.stop;
       inv.stop = null;
-      if (s.found === null) g.log(`🔍 Inspector Gumshoe pokes around the ${g.world.roomAt(...s.cell)?.name || 'garden'} and mutters "hmm" several times.`, 'dim');
+      if (s.found === null) g.log(`🔍 ${p.title} pokes around the ${g.world.roomAt(...s.cell)?.name || 'garden'} and mutters "hmm" several times.`, 'dim');
       else if (inv.done.has(s.id)) { /* already found on the way */ }
       else if (s.still()) {
         inv.done.add(s.id);
+        if (s.bite && Math.random() < s.bite.chance) s.bite.run(p);
         s.clear();
-        if (s.sus > 0) { inv.found++; exposed(g, `🕵️ Inspector Gumshoe ${s.found}`, s.sus); }
-        else g.log(`🕵️ Inspector Gumshoe ${s.found}`, 'tool');
+        if (s.sus > 0) inv.found++;
+        if (p.dead) { if (s.sus > 0) g.addSuspicion(s.sus); }
+        else if (s.sus > 0) exposed(g, `🕵️ ${p.title} ${s.found}`, s.sus);
+        else g.log(`🕵️ ${p.title} ${s.found}`, 'tool');
       } else {
-        g.log('🔍 Inspector Gumshoe finds nothing but a suspiciously clean spot. He sniffs it anyway.', 'dim');
+        g.log(`🔍 ${p.title} finds nothing but a suspiciously clean spot. He sniffs it anyway.`, 'dim');
       }
       return;
     }
@@ -407,10 +465,11 @@ function updateInvestigation(g, gdt, min) {
     const clean = inv.found === 0;
     if (clean && g.contract && !g.result) g.suspicion = Math.max(0, g.suspicion - 10);
     endInvestigation(g, clean
-      ? `🕵️ Inspector Gumshoe finds nothing. "Clean. Suspiciously clean. But clean."${g.contract ? ' (-10 suspicion)' : ''}`
-      : `🕵️ Inspector Gumshoe snaps his notebook shut. "I'll be back." He sounds like he means it.`);
+      ? `🕵️ ${p.title} finds nothing. "Clean. Suspiciously clean. But clean."${g.contract ? ' (-10 suspicion)' : ''}`
+      : `🕵️ ${p.title} snaps his notebook shut. "I'll be back." He sounds like he means it.`);
   } else if (inv.state === 'leaving') {
     const p = inv.detective;
+    if (p.trapped > 0 || p.onFire) return;
     walk(g, p, gdt, 2.6);
     if (p.route.length) return;
     g.responders = g.responders.filter(o => o !== p);
@@ -421,6 +480,26 @@ function updateInvestigation(g, gdt, min) {
     if (g.vehicles.includes(inv.car)) return;
     g.investigation = null;
     g.policeCooldown = g.clock + POLICE_COOLDOWN;
+    // A dead inspector gets a replacement, straight away.
+    if (g.pendingInquiry) {
+      const reason = g.pendingInquiry;
+      g.pendingInquiry = null;
+      g.policeCooldown = 0;
+      requestInvestigation(g, reason);
+    }
+  }
+}
+
+// A firefighter, inspector or biker has died: take them off the job.
+export function responderDown(g, p) {
+  g.responders = g.responders.filter(o => o !== p);
+  const inv = g.investigation;
+  if (inv && inv.detective === p) {
+    inv.state = 'gone';
+    if (inv.car) inv.car.state = 'leave';
+    g.inspectorsLost = (g.inspectorsLost || 0) + 1;
+    g.pendingInquiry = `the death of ${p.title}`;
+    g.log(`🚓 ${p.title}'s partner drives off very fast, talking very loudly into the radio.`, 'warn');
   }
 }
 

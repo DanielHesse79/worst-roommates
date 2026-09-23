@@ -61,13 +61,20 @@ export function pleaseNeighbour(g, side, amount, msg) {
   if (msg) g.log(`${msg} (The ${n.family.name}s' patience: ${Math.round(n.patience)}%)`, 'dim');
 }
 
-function moveOut(g, side) {
+function moveOut(g, side, why) {
   const n = g.neighbours[side];
   n.state = 'moving';
   n.t = 90;
   n.van = vehicle(g, 'van', HOUSES[side].x, side === 'west' ? -1 : 1, FAR_CURB);
   g.pastFamilies.push(n.family.name);
-  g.log(`🚚 The ${n.family.name}s have had enough of you. A removal van pulls up outside their house. ${pick(MOVING_OUT)}`, 'warn');
+  g.log(why || `🚚 The ${n.family.name}s have had enough of you. A removal van pulls up outside their house. ${pick(MOVING_OUT)}`, 'warn');
+}
+
+// One of them died at your house. They can't bear to live next door any more.
+export function neighbourBereaved(g, side, name) {
+  const n = g.neighbours[side];
+  if (n.state !== 'home') return;
+  moveOut(g, side, `🖤 The ${n.family.name}s can't bear to live next to the house where ${name} died. A removal van arrives the same afternoon.`);
 }
 
 function moveIn(g, side) {

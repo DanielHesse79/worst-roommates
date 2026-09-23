@@ -5,6 +5,7 @@ import { triggerFireworks, openMail, fartCloud, dustExplosion } from './traps.js
 import { responderSpot } from './emergency.js';
 import { visitorOutcome } from './visitors.js';
 import { GRID_W } from './data.js';
+import { summonGang } from './gang.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -371,6 +372,9 @@ export const OBJECT_ACTIONS = {
         if (g.contract) g.malice += 20;
         g.log(`🕹️ ${s.first} releases "${say(GAMES)}". It sells three copies and one refund.${g.contract ? ' (+20 😈)' : ''}`, 'tool');
       } },
+    { id: 'insultbikers', label: 'Insult the local biker club online', icon: '🏍️', evil: true, duration: 20, spot: useSpot,
+      available: (s, o, g) => !o.charred && !g.gang,
+      finish(s, o, g) { summonGang(g, `${s.first} posts "your bikes are scooters" on the local biker club's forum, with this address.`); } },
     { id: 'hackwires', label: 'Hack: overload the wiring', icon: '⚡', duration: 30, spot: useSpot,
       available: (s, o) => !o.charred && s.rosterId === 'daniel',
       finish(s, o, g) {
@@ -773,8 +777,15 @@ export const RESPONDER_ACTIONS = [
   { id: 'flirtfire', label: 'Flirt with the firefighter', icon: '😍', evil: true, duration: 30, ...nearResponder, kinds: ['firefighter'],
     tick(s, t, g, a, m) { hold(s, t); s.addNeed('social', 1 * m); s.addNeed('fun', 0.6 * m); },
     finish(s, t, g) { g.log(`😍 ${s.first} keeps ${t.title} chatting about his charity calendar while the house burns behind him.`, 'evil'); } },
+  { id: 'beer', label: 'Offer them a beer', icon: '🍺', duration: 5, ...nearResponder, kinds: ['biker'],
+    available: (s, t) => !t.beaten.has(s.id),
+    finish(s, t, g) {
+      t.beaten.add(s.id);
+      if (t.target === s) t.target = null;
+      g.log(`🍺 ${s.first} hands ${t.first} a beer. ${t.first} decides ${s.first} is "alright, actually" and goes to hit someone else.`, 'tool');
+    } },
   { id: 'coffee', label: 'Offer him a coffee', icon: '☕', duration: 10, ...nearResponder, kinds: ['detective'], available: searching, tick: hold,
-    finish(s, t, g) { t.pause = 45; g.log(`☕ ${s.first} hands Inspector Gumshoe a coffee. He stops to enjoy it. That buys about 45 minutes.`, 'tool'); } },
+    finish(s, t, g) { t.pause = 45; g.log(`☕ ${s.first} hands ${t.title} a coffee. He stops to enjoy it. That buys about 45 minutes.`, 'tool'); } },
   { id: 'charmdet', label: 'Charm the inspector', icon: '😘', duration: 15, ...nearResponder, kinds: ['detective'], tick: hold,
     available: (s, t, g) => searching(s, t, g) && s.canUse('lure'),
     finish(s, t, g) {
@@ -785,14 +796,14 @@ export const RESPONDER_ACTIONS = [
       }
       if (g.contract) g.suspicion = Math.max(0, g.suspicion - 10);
       if (g.investigation) g.investigation.plan.shift();
-      g.log(`😘 ${s.first} flirts with Inspector Gumshoe until he forgets what he was about to check.${g.contract ? ' (-10 suspicion)' : ''}`, 'tool');
+      g.log(`😘 ${s.first} flirts with ${t.title} until he forgets what he was about to check.${g.contract ? ' (-10 suspicion)' : ''}`, 'tool');
     } },
   { id: 'ramble', label: 'Tell him a very long story', icon: '🗣️', duration: 40, ...nearResponder, kinds: ['detective'], tick: hold,
     available: (s, t, g) => searching(s, t, g) && s.rosterId === 'adam',
-    finish(s, t, g) { g.endInvestigation(`🗣️ Forty minutes into ${s.first}'s story about a dream he had in 2004, Inspector Gumshoe remembers an urgent appointment. Anywhere else.`); } },
+    finish(s, t, g) { g.endInvestigation(`🗣️ Forty minutes into ${s.first}'s story about a dream he had in 2004, ${t.title} remembers an urgent appointment. Anywhere else.`); } },
   { id: 'spoofradio', label: 'Spoof his police radio', icon: '📻', duration: 8, ...nearResponder, kinds: ['detective'], tick: hold,
     available: (s, t, g) => searching(s, t, g) && s.rosterId === 'daniel',
-    finish(s, t, g) { g.endInvestigation(`📻 ${s.first} patches into the police radio: "All units, a cat is stuck up a tree across town." Inspector Gumshoe sprints for his car.`); } },
+    finish(s, t, g) { g.endInvestigation(`📻 ${s.first} patches into the police radio: "All units, a cat is stuck up a tree across town." ${t.title} sprints for his car.`); } },
 ];
 
 // Somebody has to clean up. They'll remember who made the mess.
@@ -839,7 +850,7 @@ export const TOMB_ACTIONS = [
 export const GOD_COST = {
   ladder: 20, brick: 30, gas: 25, wiring: 25, spoil: 30, rumor: 15, omen: 40,
   bookshelf: 25, fireworks: 35, piranhas: 40, ghost: 30, chili: 20, letterbomb: 35, cleanup: 10,
-  candles: 20, hairspray: 25, flour: 30, torch: 25, brakes: 40, stereo: 15,
+  candles: 20, hairspray: 25, flour: 30, torch: 25, brakes: 40, stereo: 15, bikers: 50,
 };
 
 const doorCells = d => (d.axis === 'x' ? [[d.at - 1, d.pos], [d.at, d.pos]] : [[d.pos, d.at - 1], [d.pos, d.at]]);
@@ -875,6 +886,11 @@ function godPowers(pick, g) {
     }
     if (o.type === 'fridge' && !o.charred && !o.chili) {
       power('chili', "Swap in Grandma's chili", '🫘', objCells(o), () => { o.chili = 2; g.log("🫘 The fridge now contains a suspicious pot of three-bean chili.", 'tool'); });
+    }
+    if (o.type === 'mailbox' && !g.gang) {
+      power('bikers', "Post a 'FREE BEER' flyer to the local biker club", '🏍️', [], () => {
+        summonGang(g, 'A flyer promising FREE BEER at this address appears on the biker club noticeboard.');
+      });
     }
     if (o.type === 'mailbox' && !o.bomb) {
       power('letterbomb', 'Post a letter bomb', '📬', objCells(o), () => { o.bomb = true; o.flagUp = true; g.log('📬 A parcel arrives. It is ticking, very quietly.', 'tool'); });

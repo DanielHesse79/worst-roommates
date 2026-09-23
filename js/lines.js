@@ -89,6 +89,8 @@ export const LINES = {
   candlelit: ['Self-care is lighting things on fire, slowly.', 'This one is called "Burning Linen".', 'Candles make everything cosier. And flammable.'],
   lightcandles: ['I will be right back. Probably.', 'Candles are basically decorative fire.'],
   weeds: ['Die, dandelions, die!', 'Gardening is just controlled arson.', 'Is the lawn supposed to be smoking?', 'Nature must be punished.'],
+  insultbikers: ['Scooters. SCOOTERS.', 'Posting our address was a power move.', 'What is the worst that could happen?'],
+  beer: ['Easy, big fella. Have a beer.', 'You look thirsty. And terrifying.'],
   egg: ['Breakfast is served, neighbours!', 'Omelette you finish, but first: eggs.', 'This one is for the hedge complaint.'],
   gift: ['Peace offering incoming!', 'Please stop writing to the council.'],
   rudevisit: ['Off my lawn. OFF.', 'We do not want any. Of anything. Ever.', 'Have you tried leaving?'],
