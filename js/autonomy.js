@@ -42,6 +42,8 @@ function pickEvil(s, g) {
   opts.push({ w: 0.5, def: objAct('computer', 'darkarts'), target: o('computer') });
   if (s.has('pyro')) {
     opts.push({ w: 1.5, def: objAct('fireplace', 'light'), target: o('fireplace') });
+    opts.push({ w: 0.8, def: objAct('shed', 'weeds'), target: o('shed') });
+    opts.push({ w: 0.6, def: objAct('candles', 'lightcandles'), target: o('candles') });
     opts.push({ w: 0.4, def: objAct('fireplace', 'stoke'), target: o('fireplace') });
     opts.push({ w: 0.4, def: objAct('heater', 'crank'), target: o('heater') });
   }
@@ -76,7 +78,7 @@ function pickNeed(s, g) {
     if (need === 'hunger') {
       const fridge = o('fridge');
       const selfPoisoned = fridge.poisoned && fridge.poisonedBy === s.id && !s.has('glutton');
-      const cook = [[objAct('stove', 'cook'), o('stove')], [objAct('grill', 'grill'), o('grill')]];
+      const cook = [[objAct('stove', 'cook'), o('stove')], [objAct('grill', 'grill'), o('grill')], [objAct('stove', 'bake'), o('stove')]];
       const snack = selfPoisoned ? [] : [[objAct('fridge', 'snack'), fridge]];
       // Mostly the safe option; the player has to push them toward the stove.
       cands = Math.random() < 0.8 ? [...snack, ...shuffle(cook)] : [...shuffle(cook), ...snack];
@@ -86,7 +88,9 @@ function pickNeed(s, g) {
         .sort((a, b) => (a.id === s.bedId ? -1 : b.id === s.bedId ? 1 : Math.hypot(a.use[0] - s.x, a.use[1] - s.z) - Math.hypot(b.use[0] - s.x, b.use[1] - s.z)))
         .map(b => [objAct('bed', 'sleep'), b]);
     } else if (need === 'hygiene') {
-      cands = [[objAct('tub', 'bath'), o('tub')]];
+      // The vain ones would rather do their hair than wash.
+      const hair = [objAct('vanity', 'hair'), o('vanity')], bath = [objAct('tub', 'bath'), o('tub')];
+      cands = ['narcissist', 'charmer', 'drama'].includes(s.personality) ? [hair, bath] : shuffle([bath, hair]);
     } else if (need === 'social') {
       const others = g.sims.filter(x => x.alive && x !== s && !x.status.swimming)
         .sort((a, b) => s.relWith(b) - s.relWith(a));
@@ -101,6 +105,8 @@ function pickNeed(s, g) {
         [objAct('mailbox', 'mail'), o('mailbox')],
         [objAct('fireplace', 'warm'), o('fireplace')],
         [objAct('heater', 'warmhands'), o('heater')],
+        [objAct('candles', 'candlelit'), o('candles')],
+        [objAct('shed', 'weeds'), o('shed')],
       ]);
       if (s.has('stargazer')) cands.unshift([objAct('telescope', 'stargaze'), o('telescope')]);
       if (s.rosterId === 'daniel') cands.unshift([objAct('computer', 'devgame'), o('computer')]);

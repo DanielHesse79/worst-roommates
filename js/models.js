@@ -211,6 +211,44 @@ const BUILDERS = {
     g.userData.flag = flag;
     g.add(flag);
   },
+  candles(g) {
+    g.add(box(0.6, 0.7, 0.45, WHITE, 0, 0.35, -0.1));
+    g.add(box(0.66, 0.04, 0.5, 0xd8cfc0, 0, 0.72, -0.1));
+    g.add(box(0.5, 0.12, 0.3, 0x7bb2b6, -0.05, 0.8, -0.2));
+    const flames = new THREE.Group();
+    [[-0.18, 0.12, 0.08], [0.02, 0.2, 0.1], [0.2, 0.1, 0.07]].forEach(([x, h, z]) => {
+      g.add(cyl(0.05, 0.05, h, 0xf4ead2, x, 0.74 + h / 2, z));
+      flames.add(flameMesh(0.03, x, 0.74 + h, z));
+    });
+    flames.visible = false;
+    g.userData.flames = flames;
+    g.add(flames);
+  },
+  vanity(g) {
+    g.add(box(0.85, 0.8, 0.45, WOOD, 0, 0.4, 0));
+    g.add(box(0.9, 0.04, 0.5, 0xe8e2d6, 0, 0.82, 0));
+    g.add(box(0.7, 0.75, 0.04, 0xcfe6f0, 0, 1.3, -0.2, { emissive: 0x9fc8dc, emissiveIntensity: 0.15 }));
+    g.add(box(0.78, 0.83, 0.03, DARKWOOD, 0, 1.3, -0.23));
+    g.add(cyl(0.05, 0.05, 0.24, 0xe05a9a, 0.28, 0.96, 0.08));
+    g.add(cyl(0.03, 0.03, 0.04, 0x222222, 0.28, 1.1, 0.08));
+  },
+  shed(g) {
+    g.add(box(0.9, 1.2, 0.85, 0x7a5a3a, 0, 0.6, -0.05));
+    for (const side of [-1, 1]) {
+      const r = box(0.55, 0.06, 1.0, 0x4a3a2e, side * 0.24, 1.32, -0.05);
+      r.rotation.z = -side * 0.5;
+      g.add(r);
+    }
+    g.add(box(0.4, 0.9, 0.03, 0x5a3f28, 0, 0.45, 0.38));
+    // The weed torch leaning by the door.
+    const torch = new THREE.Group();
+    torch.add(cyl(0.02, 0.02, 0.8, 0x444444, 0, 0.4, 0));
+    torch.add(cyl(0.05, 0.035, 0.12, 0x888888, 0, 0.82, 0));
+    torch.add(cyl(0.09, 0.09, 0.3, 0xd23a2a, 0.12, 0.15, 0));
+    torch.position.set(0.36, 0, 0.46);
+    torch.rotation.z = 0.25;
+    g.add(torch);
+  },
   telescope(g) {
     for (let i = 0; i < 3; i++) {
       const a = i * Math.PI * 2 / 3;

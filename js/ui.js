@@ -138,9 +138,10 @@ export class UI {
     const hint = this.$('trapHint');
     if (id) {
       const t = [...TRAPS, CLEANUP].find(tt => tt.id === id);
-      const objectTarget = { fireworks: 'the fireplace or grill', gas: 'the stove or grill', wiring: 'the TV or bathtub', spoil: 'the fridge', chili: 'the fridge', letterbomb: 'the mailbox', bookshelf: 'the bookshelf' };
+      const objectTarget = { fireworks: 'the fireplace or grill', gas: 'the stove or grill', wiring: 'the TV or bathtub', spoil: 'the fridge', chili: 'the fridge', letterbomb: 'the mailbox', bookshelf: 'the bookshelf',
+        candles: 'the bathroom candles', hairspray: 'the vanity mirror', flour: 'the stove', torch: 'the garden shed' };
       const where = { indoor: 'an indoor floor tile', outdoor: 'a patch of lawn', pool: 'the pool', tomb: 'a gravestone', object: objectTarget[t.id],
-        evidence: 'a hidden trap, a tampered object, the pool or a bricked-up door' }[t.target];
+        evidence: 'a hidden trap, a tampered object, the pool or a bricked-up door', car: 'a car passing the house (pause first to aim)' }[t.target];
       hint.textContent = `${t.icon} ${t.name}: click ${where}. Right-click or Esc to cancel.`;
       hint.classList.remove('hidden');
     } else {
@@ -190,7 +191,8 @@ export class UI {
     if (pick.kind === 'sim') items.unshift({ label: `Select ${pick.sim.first}`, icon: '👆', run: () => this.select(pick.sim) });
     const title = pick.kind === 'object' ? pick.obj.name : pick.kind === 'sim' ? pick.sim.name : pick.kind === 'tomb' ? `R.I.P. ${pick.tomb.name} — "${pick.tomb.epitaph || 'Gone.'}"`
       : pick.kind === 'door' ? pick.door.name : pick.kind === 'visitor' ? `${g.visit.type.icon} ${g.visit.type.name} at the door`
-      : pick.kind === 'responder' ? `${pick.person.kind === 'detective' ? '🕵️' : '🧯'} ${pick.person.title}` : 'Swimming Pool';
+      : pick.kind === 'responder' ? `${pick.person.kind === 'detective' ? '🕵️' : '🧯'} ${pick.person.title}`
+      : pick.kind === 'car' ? '🚗 A car passing the house' : 'Swimming Pool';
     if (!items.length) items.push({ label: g.selected ? `${g.selected.first} can't do anything here` : 'Select a sim first', icon: '🤷', run: () => {} });
     this.showPie(items, x, y, title);
   }
@@ -438,6 +440,7 @@ export class UI {
     if (s.needs.hunger <= 0) flags.push('💀 Starving');
     if (st.trapped > 0) flags.push('🪤 Caught in a bear trap');
     if (st.gassy > 0) flags.push('💨 Dangerously gassy');
+    if (st.hairspray > 0) flags.push(st.extraHold ? '💇 Extra-hold hair (highly flammable)' : '💇 Hairsprayed (flammable)');
     if (s.confused) flags.push('🌀 Confused');
     if (s.lovebomb) flags.push('💝 Being love-bombed');
     const rels = this.game.sims.filter(o => o !== s && o.alive).map(o => {

@@ -8,7 +8,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-export const CURB_Z = GRID_H + 2.3;       // emergency vehicles pull over here, clear of traffic
+export const CURB_Z = GRID_H + 2.2;       // emergency vehicles pull over here, clear of traffic
 const STREET_START = -40, STREET_END = 66;
 const FIRE_PARK_X = 6.5, POLICE_PARK_X = 15;
 const REACH = 2.3;                        // hose range, in cells
@@ -37,22 +37,28 @@ function responder(g, kind, first, title, x, z) {
   return p;
 }
 
+// The fire engine comes from the west and the police from the east, and each U-turns and leaves the
+// way it came, so parked emergency vehicles never have to drive through each other.
 function vehicle(g, kind, parkX) {
-  const v = { id: 'car' + nextId++, kind, x: STREET_START, z: CURB_Z, parkX, state: 'arrive' };
+  const side = kind === 'police' ? 1 : -1;
+  const v = { id: 'car' + nextId++, kind, side, x: side < 0 ? STREET_START : STREET_END, z: CURB_Z, yaw: side < 0 ? 0 : Math.PI, turn: 0, parkX, state: 'arrive' };
   g.vehicles.push(v);
   return v;
 }
 
 function driveVehicle(g, v, gdt) {
   if (v.state === 'arrive') {
-    const d = v.parkX - v.x;
+    const d = Math.abs(v.parkX - v.x);
     const step = clamp(d * 1.1, 2, 14) * gdt;
     if (d <= step) { v.x = v.parkX; v.state = 'parked'; }
-    else v.x += step;
+    else v.x -= v.side * step;
     g.sfx(v.kind === 'police' ? 'police' : 'siren');
   } else if (v.state === 'leave') {
-    v.x += 9 * gdt;
-    if (v.x > STREET_END) g.vehicles = g.vehicles.filter(o => o !== v);
+    v.turn = Math.min(1, v.turn + gdt / 1.2);
+    v.yaw = (v.side < 0 ? 0 : Math.PI) + Math.PI * v.turn;
+    v.z = CURB_Z + Math.sin(Math.PI * v.turn) * 0.9;
+    if (v.turn >= 1) v.x += v.side * 9 * gdt;
+    if (v.x < STREET_START - 2 || v.x > STREET_END + 2) g.vehicles = g.vehicles.filter(o => o !== v);
   }
 }
 
@@ -66,6 +72,7 @@ function routeTo(g, p, cx, cz) {
   const [sx, sz] = outside ? gateCell(w) : [Math.floor(p.x), Math.floor(p.z)];
   const path = w.findPath(sx, sz, tx, tz);
   if (!path) return false;
+  p.sidestepped = false;
   p.route = [...(outside ? [[sx + 0.5, GRID_H + 0.4], [sx + 0.5, sz + 0.5]] : []), ...path.map(([x, z]) => [x + 0.5, z + 0.5])];
   return true;
 }
@@ -138,6 +145,25 @@ function breakIn(g, p) {
   return true;
 }
 
+// Nobody shares a spot: a responder who stops on top of a roommate (or a colleague who got there
+// first) shuffles over to a free cell, once per destination.
+function sidestep(g, p) {
+  const w = g.world, cx = Math.floor(p.x), cz = Math.floor(p.z);
+  if (p.moving || p.sidestepped || !w.inBounds(cx, cz)) return false;
+  const i = g.responders.indexOf(p);
+  const crowded = g.responders.some((o, j) => j < i && !o.moving && Math.hypot(o.x - p.x, o.z - p.z) < 0.6)
+    || g.sims.some(s => s.alive && !s.moving && !s.status.swimming && Math.hypot(s.x - p.x, s.z - p.z) < 0.5);
+  if (!crowded) return false;
+  p.sidestepped = true;
+  const taken = (x, z) => g.responders.some(o => o !== p && Math.floor(o.x) === x && Math.floor(o.z) === z)
+    || g.sims.some(s => s.alive && s.cx === x && s.cz === z);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const nx = cx + dx, nz = cz + dz;
+    if (w.canStep(cx, cz, nx, nz) && !taken(nx, nz)) { p.route = [[nx + 0.5, nz + 0.5]]; return true; }
+  }
+  return false;
+}
+
 export function respondersNear(g, x, z, r) {
   return g.responders.filter(p => Math.hypot(p.x - x, p.z - z) <= r);
 }
@@ -163,10 +189,12 @@ function fightFire(g, b, p, gdt, min) {
     }
   }
   if (p.pause > 0) { p.pause -= min; p.pose = 'idle'; p.aim = null; return; }
+  if (p.shuffle) { walk(g, p, gdt, 2.6); if (!p.route.length) p.shuffle = false; return; }
   const flame = nearestFlame(w, p, REACH);
   if (flame) {
     p.route = [];
     p.moving = false;
+    if (sidestep(g, p)) { p.shuffle = true; return; }
     p.pose = 'spray';
     p.aim = [flame.x + 0.5, flame.z + 0.5];
     p.facing = Math.atan2(p.aim[0] - p.x, p.aim[1] - p.z);
@@ -255,10 +283,16 @@ function evidence(g) {
   for (const o of w.objects.values()) {
     const at = o.use || o.cells[0];
     if (o.sabotaged) {
-      add('sab:' + o.id, at, 12, () => o.sabotaged, () => { o.sabotaged = false; },
-        o.type === 'stove' || o.type === 'grill' ? `notices the ${o.name}'s gas valve has been loosened. With a wrench. Recently.`
-          : `finds the wiring behind the ${o.name} stripped bare. "Mice," says nobody.`);
+      const valve = `notices the ${o.name}'s gas valve has been loosened. With a wrench. Recently.`;
+      const found = {
+        stove: valve, grill: valve,
+        candles: 'notices the scented candles are lined up under the towels. "Hygge, or homicide?"',
+        vanity: 'reads the hairspray can: "EXTRA HOLD. EXTRA FLAMMABLE." The second line is handwritten.',
+        shed: "finds the weed torch's gas hose neatly slit with a knife.",
+      }[o.type] || `finds the wiring behind the ${o.name} stripped bare. "Mice," says nobody.`;
+      add('sab:' + o.id, at, 12, () => o.sabotaged, () => { o.sabotaged = false; }, found);
     }
+    if (o.flour) add('flour:' + o.id, at, 8, () => o.flour, () => { o.flour = false; }, 'finds flour on every surface of the kitchen, including the ceiling. "Baking, was it?"');
     if (o.poisoned > 0) {
       if (o.untraceable) add('tox:' + o.id, at, 0, () => o.poisoned > 0, () => {}, `swabs the ${o.name}. Clean. Dr. Asraa Z's chemistry is, as always, undetectable.`);
       else add('tox:' + o.id, at, 15, () => o.poisoned > 0, () => { o.poisoned = 0; }, `swabs the ${o.name}. The swab turns a colour swabs should never turn.`);
@@ -272,6 +306,11 @@ function evidence(g) {
     if (!d.bricked || d.hackLocked) continue;
     const cell = d.axis === 'x' ? [d.at - 1, d.pos] : [d.pos, d.at - 1];
     add('door:' + d.id, cell, 10, () => d.bricked, () => { d.bricked = false; w.rebuildEdges(); }, `taps the fresh brickwork where the ${d.name} used to be. "Load-bearing, is it?"`);
+  }
+  const wreck = w.wreck;
+  if (wreck && !wreck.checked) {
+    add('wreck', [Math.floor(wreck.x), Math.floor(wreck.z)], 10, () => !wreck.checked, () => { wreck.checked = true; },
+      'crawls under the wreck in the front garden. The brake lines were cut. Neatly. With scissors.');
   }
   const ladder = w.ladder;
   if (!ladder.present) add('ladder', ladder.use, 10, () => !ladder.present, () => { ladder.present = true; }, 'notices the pool has no ladder. He writes "WHY" in his notebook and underlines it three times.');
@@ -331,6 +370,7 @@ function updateInvestigation(g, gdt, min) {
     const p = inv.detective;
     if (p.pause > 0) { p.pause -= min; p.pose = 'idle'; p.moving = false; return; }
     if (p.route.length) { walk(g, p, gdt, 2.2); return; }
+    if (sidestep(g, p)) return;
     if (inv.stop) {
       p.pose = 'search';
       p.facing = Math.atan2(inv.stop.cell[0] + 0.5 - p.x, inv.stop.cell[1] + 0.5 - p.z);

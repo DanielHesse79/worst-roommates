@@ -1,6 +1,6 @@
 // Life outside the lot: traffic, pedestrians, visitors at the front door and the emergency services.
 import * as THREE from 'three';
-import { GRID_H, SKIN_TONES } from './data.js';
+import { GRID_W, GRID_H, SKIN_TONES } from './data.js';
 import { mat, box, cyl, simModel, disposeTree } from './models.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -8,6 +8,9 @@ const LANES = [{ z: GRID_H + 3.2, dir: 1 }, { z: GRID_H + 5.4, dir: -1 }];
 const X_MIN = -45, X_MAX = 67;
 const CAR_COLORS = [0xd9442b, 0x2d6ad9, 0xe0c04a, 0xf2f2f2, 0x2a2a2a, 0x3a9a5a, 0x8a3ab0];
 const TRAFFIC_TIME = [0, 1, 1.6, 2.2]; // traffic speed per game-speed setting (capped so it doesn't blur)
+const CAR_GAP = 0.9;                     // bumper-to-bumper distance drivers try to keep
+const CRASH_TIME = 0.9;                  // seconds from cut brakes to the front garden
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 function wheel(x, z) {
   const w = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.14, 12), mat(0x151515));
@@ -40,6 +43,8 @@ function carMesh(bus) {
   g.userData.lights = lights;
   return g;
 }
+
+const WRECK = mat(0x201c1a, { roughness: 1 });
 
 function beacon(color, x, y, z, w = 0.22) {
   return box(w, 0.1, 0.18, color, x, y, z, { emissive: color, emissiveIntensity: 0.2, unique: true });
@@ -108,6 +113,7 @@ export class Street {
     this.game = game;
     this.view = view;
     this.cars = [];
+    this.wrecks = [];
     this.walkers = [];
     this.visitorMeshes = new Map();
     this.vehicleMeshes = new Map();
@@ -128,41 +134,132 @@ export class Street {
   updateTraffic(tdt) {
     this.carTimer -= tdt;
     if (this.carTimer <= 0) {
-      this.carTimer = rand(2.5, 7);
-      const lane = LANES[Math.floor(Math.random() * 2)];
-      const bus = Math.random() < 0.15;
-      const mesh = carMesh(bus);
-      mesh.rotation.y = lane.dir > 0 ? 0 : Math.PI;
-      mesh.position.set(lane.dir > 0 ? X_MIN : X_MAX, 0, lane.z);
-      this.scene.add(mesh);
-      this.cars.push({ mesh, dir: lane.dir, speed: bus ? rand(3, 4) : rand(4.5, 7) });
+      const lane = Math.floor(Math.random() * 2), { z, dir } = LANES[lane];
+      const startX = dir > 0 ? X_MIN : X_MAX;
+      // Never spawn a car on top of one that's still pulling away.
+      if (this.cars.some(c => c.lane === lane && Math.abs(c.mesh.position.x - startX) < 7)) this.carTimer = 0.5;
+      else {
+        this.carTimer = rand(2.5, 7);
+        const bus = Math.random() < 0.15;
+        const mesh = carMesh(bus);
+        const car = { id: this.pid++, mesh, lane, dir, half: bus ? 2.2 : 0.95, cruise: bus ? rand(3, 4) : rand(4.5, 7) };
+        car.speed = car.cruise;
+        mesh.rotation.y = dir > 0 ? 0 : Math.PI;
+        mesh.position.set(startX, 0, z);
+        mesh.traverse(o => { o.userData.pick = { kind: 'car', id: car.id }; });
+        this.scene.add(mesh);
+        this.cars.push(car);
+      }
+    }
+    // Drivers brake for whatever is ahead of them in their lane, so cars queue instead of overlapping.
+    for (const c of this.cars) {
+      if (c.crash) continue;
+      let gap = Infinity, ahead = null;
+      for (const o of this.cars) {
+        if (o === c || o.crash || o.lane !== c.lane) continue;
+        const along = (o.mesh.position.x - c.mesh.position.x) * c.dir;
+        if (along <= 0) continue;
+        const d = along - c.half - o.half;
+        if (d < gap) { gap = d; ahead = o; }
+      }
+      for (const v of this.game.vehicles) {
+        if (Math.abs(v.z - LANES[c.lane].z) > 0.6) continue;
+        const along = (v.x - c.mesh.position.x) * c.dir;
+        const d = along - c.half - (v.kind === 'police' ? 0.95 : 1.9);
+        if (along > 0 && d < gap) { gap = d; ahead = { speed: 0 }; }
+      }
+      const want = !ahead || gap > 4 ? c.cruise : gap < CAR_GAP ? 0 : Math.min(c.cruise, ahead.speed + (gap - CAR_GAP) * 0.8);
+      c.speed += (want - c.speed) * Math.min(1, tdt * 4);
+      const step = Math.max(0, Math.min(c.speed * tdt, gap - CAR_GAP * 0.5));
+      c.mesh.position.x += c.dir * step;
     }
     const night = this.view.night || 0;
     this.cars = this.cars.filter(c => {
-      c.mesh.position.x += c.dir * c.speed * tdt;
+      if (c.crash) return this.updateCrash(c, tdt);
       for (const l of c.mesh.userData.lights) l.material.emissiveIntensity = 0.3 + 2.5 * night;
       const gone = c.mesh.position.x > X_MAX + 5 || c.mesh.position.x < X_MIN - 5;
       if (gone) { this.scene.remove(c.mesh); disposeTree(c.mesh); }
       return !gone;
     });
+    this.wrecks = this.wrecks.filter(w => {
+      if (this.game.clock < w.until) return true;
+      this.scene.remove(w.mesh);
+      disposeTree(w.mesh);
+      return false;
+    });
+  }
+
+  // Cut brakes: the car swerves off the road, over the kerb and into the front garden.
+  crash(car) {
+    if (car.crash) return;
+    const { x, z } = car.mesh.position;
+    car.crash = { t: 0, x0: x, z0: z, xm: x + car.dir * 2.5, x1: clamp(x + car.dir * 4, 1.5, GRID_W - 1.5), z1: GRID_H - 1.4 };
+    for (const w of this.walkers) {
+      if (Math.abs(w.m.root.position.x - car.crash.x1) < 5) { w.dir = w.m.root.position.x < car.crash.x1 ? -1 : 1; w.speed = 4; w.panic = true; }
+    }
+  }
+
+  updateCrash(c, tdt) {
+    const k = c.crash, m = c.mesh;
+    k.t = Math.min(1, k.t + tdt / CRASH_TIME);
+    const e = k.t * k.t, u = 1 - e;
+    // Quadratic curve: carry on down the road for a moment, then veer hard into the garden.
+    m.position.x = u * u * k.x0 + 2 * u * e * k.xm + e * e * k.x1;
+    m.position.z = u * u * k.z0 + 2 * u * e * k.z0 + e * e * k.z1;
+    m.position.y = Math.sin(Math.PI * Math.min(1, e * 1.4)) * 0.6;
+    const dx = 2 * u * (k.xm - k.x0) + 2 * e * (k.x1 - k.xm), dz = 2 * e * (k.z1 - k.z0);
+    m.rotation.y = -Math.atan2(dz, dx);
+    m.rotation.z = Math.sin(k.t * 9) * 0.15;
+    if (k.t < 1) return true;
+    this.game.carCrash(k.x1, k.z1);
+    // What's left: a charred shell on its side, until the tow truck gets round to it.
+    for (const l of m.userData.lights) l.material.dispose();
+    m.traverse(o => { if (o.isMesh) { o.material = WRECK; o.userData.pick = null; } });
+    m.position.y = 0.15;
+    m.rotation.z = 0.5;
+    this.wrecks.push({ mesh: m, until: this.game.clock + 720 });
+    return false;
   }
 
   updateWalkers(tdt, time) {
     this.walkTimer -= tdt;
     if (this.walkTimer <= 0) {
-      this.walkTimer = rand(3, 9);
       const dir = Math.random() < 0.5 ? 1 : -1;
-      const m = person(CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)], this.pid++);
-      m.root.position.set(dir > 0 ? X_MIN + 15 : X_MAX - 15, 0, GRID_H + 0.7 + rand(-0.2, 0.3));
-      m.root.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-      this.scene.add(m.root);
-      this.walkers.push({ m, dir, speed: rand(0.9, 1.4), phase: Math.random() * 10 });
+      const startX = dir > 0 ? X_MIN + 15 : X_MAX - 15;
+      if (this.walkers.some(w => w.dir === dir && Math.abs(w.m.root.position.x - startX) < 2)) this.walkTimer = 1;
+      else {
+        this.walkTimer = rand(3, 9);
+        const m = person(CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)], this.pid++);
+        // Keep right: each direction has its own side of the pavement.
+        m.root.position.set(startX, 0, GRID_H + (dir > 0 ? 1.0 : 0.5));
+        m.root.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+        this.scene.add(m.root);
+        this.walkers.push({ m, dir, speed: rand(0.9, 1.4), cruise: 0, phase: Math.random() * 10 });
+      }
+    }
+    // People crossing the pavement (visitors, responders) make walkers wait instead of passing through them.
+    const g = this.game;
+    const crossing = [...(g.visit ? g.visit.people : []), ...g.responders];
+    for (const w of this.walkers) {
+      const p = w.m.root.position;
+      let gap = Infinity;
+      for (const o of this.walkers) {
+        if (o === w || o.dir !== w.dir || o.panic) continue;
+        const d = (o.m.root.position.x - p.x) * w.dir;
+        if (d > 0 && d < gap) gap = d;
+      }
+      for (const o of crossing) {
+        const d = (o.x - p.x) * w.dir;
+        if (d > 0 && Math.abs(o.z - p.z) < 0.6) gap = Math.min(gap, d);
+      }
+      const walking = w.panic || gap > 0.8;
+      if (walking) p.x += w.dir * w.speed * tdt;
+      w.m.root.rotation.y = w.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      const sw = walking && tdt > 0 ? Math.sin(time * (w.panic ? 16 : 8) + w.phase) : 0;
+      w.m.legL.rotation.x = sw * 0.6; w.m.legR.rotation.x = -sw * 0.6;
+      w.m.armL.rotation.x = w.panic ? -2.6 : -sw * 0.5; w.m.armR.rotation.x = w.panic ? -2.6 : sw * 0.5;
     }
     this.walkers = this.walkers.filter(w => {
-      w.m.root.position.x += w.dir * w.speed * tdt;
-      const s = Math.sin(time * 8 + w.phase) * (tdt > 0 ? 1 : 0);
-      w.m.legL.rotation.x = s * 0.6; w.m.legR.rotation.x = -s * 0.6;
-      w.m.armL.rotation.x = -s * 0.5; w.m.armR.rotation.x = s * 0.5;
       const gone = w.m.root.position.x > X_MAX || w.m.root.position.x < X_MIN;
       if (gone) { this.scene.remove(w.m.root); disposeTree(w.m.root); }
       return !gone;
@@ -247,6 +344,7 @@ export class Street {
         this.vehicleMeshes.set(v.id, m);
       }
       m.position.set(v.x, 0, v.z);
+      m.rotation.y = v.yaw;
       const [a, b] = m.userData.beacons;
       a.material.emissiveIntensity = flash ? 3 : 0.15;
       b.material.emissiveIntensity = flash ? 0.15 : 3;
@@ -261,6 +359,7 @@ export class Street {
 
   clear() {
     this.cars = [];
+    this.wrecks = [];
     this.walkers = [];
     this.visitorMeshes.clear();
     this.vehicleMeshes.clear();

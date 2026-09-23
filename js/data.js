@@ -8,7 +8,7 @@ export const MIN_PER_SEC = 5; // game minutes per real second at 1x
 // Every cause must have a finite value, or one death can poison the suspicion meter.
 export const DEATH_SUSPICION = {
   Meteor: 0, Fright: 0, Boredom: 2, Laughter: 2, Fart: 3, Slip: 5, Crushed: 6, Fire: 8, Electrocution: 8, Explosion: 10,
-  Fight: 15, Poison: 22, Drowning: 8, Starvation: 10, Piranhas: 25, 'Bear Trap': 25, 'Letter Bomb': 20,
+  Fight: 15, Poison: 22, Drowning: 8, Starvation: 10, Piranhas: 25, 'Bear Trap': 25, 'Letter Bomb': 20, 'Car Crash': 3,
 };
 
 export const HOUSE = { x0: 1, z0: 1, x1: 16, z1: 11 };
@@ -58,6 +58,8 @@ export const FURNITURE = [
   { id: 'fireplace', type: 'fireplace', name: 'Fireplace', cells: [[12, 2]], use: [11, 2] },
   { id: 'tub', type: 'tub', name: 'Bathtub', cells: [[14, 1], [15, 1]], use: [14, 2] },
   { id: 'toilet', type: 'toilet', name: 'Toilet', cells: [[15, 5]] },
+  { id: 'candles', type: 'candles', name: 'Scented Candles', cells: [[13, 1]], use: [13, 2] },
+  { id: 'vanity', type: 'vanity', name: 'Vanity Mirror', cells: [[15, 3]], use: [14, 3] },
   // One bed per sim: only the first N beds are built (see World). bedIndex sets the order.
   { id: 'bedA', type: 'bed', name: 'Lumpy Bed', cells: [[1, 7], [1, 8]], use: [2, 7], bedIndex: 0 },
   { id: 'bedB', type: 'bed', name: 'Creaky Bed', cells: [[1, 9], [1, 10]], use: [2, 9], bedIndex: 1 },
@@ -73,6 +75,7 @@ export const FURNITURE = [
   { id: 'grill', type: 'grill', name: 'Rusty Grill', cells: [[18, 10]], use: [18, 11] },
   { id: 'telescope', type: 'telescope', name: 'Telescope', cells: [[20, 12]], use: [19, 12] },
   { id: 'mailbox', type: 'mailbox', name: 'Mailbox', cells: [[9, 15]], use: [10, 15] },
+  { id: 'shed', type: 'shed', name: 'Garden Shed', cells: [[1, 13]], use: [2, 13] },
 ];
 
 export const TRAITS = {
@@ -122,7 +125,8 @@ export const SIM_COLORS = [0xe0574a, 0x4a90e0, 0xe0c04a, 0x6ac25a, 0xb26ae0, 0xe
 export const SKIN_TONES = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
 
 export const CAUSES = {
-  Fire: { icon: '🔥', lines: ['went up in flames, still insisting it was under control.', 'was flambéed by their own cooking.', 'panicked in exactly the wrong direction.'] },
+  Fire: { icon: '🔥', lines: ['went up in flames, still insisting it was under control.', 'was flambéed by their own cooking.', 'panicked in exactly the wrong direction.',
+    'learned that hairspray and candles are not a skincare routine.', 'weeded the garden, then became the weeds.'] },
   Drowning: { icon: '🌊', lines: ['discovered the pool had no way out.', 'treaded water until they didn\'t.', 'sank while cursing whoever took the ladder.'] },
   Electrocution: { icon: '⚡', lines: ['learned electricity is not a hobby.', 'lit up like a Christmas tree. Once.', 'should have unplugged it first.'] },
   Starvation: { icon: '🍽️', lines: ['starved behind a wall that used to be a door.', 'was too busy scheming to eat.', 'wasted away, evil to the last breath.'] },
@@ -131,19 +135,21 @@ export const CAUSES = {
   Meteor: { icon: '☄️', lines: ['taunted the heavens. The heavens answered.', 'looked up at exactly the wrong moment.', 'was struck from orbit. Poetic.'] },
   Slip: { icon: '🧽', lines: ['found the freshly waxed floor. Head first.', 'moonwalked into the afterlife.', 'slipped, flailed, and did not get up.'] },
   Crushed: { icon: '📚', lines: ['was finally buried in literature.', 'reached for a book. The bookshelf reached back.', 'learned how heavy an encyclopedia collection is.'] },
-  Explosion: { icon: '💥', lines: ['lit the fire. The fireworks lit everything else.', 'went out with a bang. Literally.', 'was scattered across the lot in festive colours.'] },
+  Explosion: { icon: '💥', lines: ['lit the fire. The fireworks lit everything else.', 'went out with a bang. Literally.', 'was scattered across the lot in festive colours.',
+    'baked bread. The flour had other plans.'] },
   Piranhas: { icon: '🐟', lines: ['discovered the pool had new residents.', 'was eaten, bite by tiny bite.', 'will be missed by nobody, except the piranhas.'] },
   Fright: { icon: '👻', lines: ['met a ghost and their heart gave out.', 'was scared to death. By someone they killed.', 'screamed once, very loudly, then never again.'] },
   'Bear Trap': { icon: '🪤', lines: ['stepped exactly where the grass looked a bit funny.', 'found out why you shouldn\'t walk barefoot on the lawn.', 'lost a leg, then everything else.'] },
   Fart: { icon: '💨', lines: ['was taken out by one that was silent but deadly.', 'inhaled at exactly the wrong moment.', "was gassed by Grandma's three-bean chili. Tragic. Fragrant."] },
   'Letter Bomb': { icon: '📬', lines: ['finally got some mail. It was the last.', 'opened a parcel marked "DEFINITELY NOT A BOMB".', 'signed for a delivery with their entire body.'] },
   Boredom: { icon: '🥱', lines: ['was bored to death by a four-hour story about crypto.', 'died mid-yawn. The story continues without them.', 'begged for the story to end. It did — for them.'] },
+  'Car Crash': { icon: '🚗', lines: ['was in the front garden when a car arrived without its brakes.', 'met a hatchback at forty miles an hour. The hatchback won.', 'was flattened by rush hour, which came early and through the fence.'] },
   Laughter: { icon: '😂', lines: ['laughed so hard their heart simply gave up.', 'died laughing. Genuinely, finally, completely.', 'heard the punchline and never recovered.'] },
 };
 
 // More dark humour: newspaper headlines, gravestone epitaphs and the Reaper's commentary.
 export const HEADLINES = {
-  Fire: ['LOCAL COOK FINALLY GETS A REVIEW: "WELL DONE"', 'HOUSE FIRE BLAMED ON "VIBES"'],
+  Fire: ['LOCAL COOK FINALLY GETS A REVIEW: "WELL DONE"', 'HOUSE FIRE BLAMED ON "VIBES"', '"EXTRA HOLD" HAIRSPRAY HOLDS FLAME FOR RECORD TIME'],
   Drowning: ['POOL PARTY ENDS EARLY FOR ONE GUEST', 'LADDER STILL MISSING, POLICE "NOT REALLY LOOKING"'],
   Electrocution: ['DIY ENTHUSIAST FINALLY CONDUCTS SOMETHING', 'TV REPAIR GOES "SHOCKINGLY" WRONG, PUN INTENDED'],
   Starvation: ['MAN LOCKED IN BEDROOM "HAD IT COMING", SAYS LANDLORD', 'ROOM WITHOUT A DOOR CLAIMS FIRST TENANT'],
@@ -152,13 +158,14 @@ export const HEADLINES = {
   Meteor: ['ASTRONOMERS CALL IT "ONE IN A BILLION". NEIGHBOURS CALL IT "DESERVED"', 'SKY FINALLY ANSWERS BACK'],
   Slip: ['FLOOR DESCRIBED AS "SPOTLESS" AT INQUEST', 'CLEANEST DEATH SCENE DETECTIVES HAVE EVER SEEN'],
   Crushed: ['READING IS DANGEROUS, SAYS CORONER', 'BOOKSHELF CHARGED WITH NOTHING'],
-  Explosion: ['FIREWORKS SEASON STARTS EARLY', 'NEIGHBOURS REPORT "LOVELY COLOURS, ONE SCREAM"'],
+  Explosion: ['FIREWORKS SEASON STARTS EARLY', 'NEIGHBOURS REPORT "LOVELY COLOURS, ONE SCREAM"', 'HOME BAKER RISES TO THE OCCASION, THEN KEEPS RISING'],
   Piranhas: ['AQUARIUM "DELIGHTED" TO HEAR FISH ARE EATING WELL', 'POOL CLOSED FOR "RESTOCKING"'],
   Fright: ['GHOST DENIES INVOLVEMENT', 'HAUNTING RATED FIVE STARS ON REVIEW SITE'],
   'Bear Trap': ['SUBURBAN BEAR POPULATION: STILL ZERO. BEAR TRAPS: ONE FEWER', 'GARDEN LANDSCAPING TURNS LETHAL'],
   Fart: ["GRANDMA'S CHILI RECIPE CLASSIFIED AS A WEAPON", 'AIR QUALITY WARNING ISSUED FOR ONE BATHROOM'],
   'Letter Bomb': ['POSTMAN DENIES EVERYTHING, WHISTLES', 'FINALLY, SOME MAIL THAT ISN\'T A BILL'],
   Boredom: ['MAN DIES DURING STORY; STORY CONTINUES', 'CRYPTO CLAIMS ANOTHER VICTIM (INDIRECTLY)'],
+  'Car Crash': ['BRAKES FAIL, FENCE FAILS, RESIDENT FAILS', 'DRIVER "JUST WANTED TO SEE THE GARDEN"'],
   Laughter: ['COMEDIAN "DEVASTATED", ALSO "A LITTLE PROUD"', 'KILLER JOKE CLAIMS ANOTHER VICTIM'],
 };
 export const EPITAPHS = ['Finally quiet.', 'Still owes rent.', 'Died as they lived: annoying.', 'Loved by no one in particular.',

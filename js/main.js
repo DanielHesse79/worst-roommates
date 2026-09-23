@@ -5,7 +5,7 @@ import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
 import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS } from './data.js';
 import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress } from './contracts.js';
-import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, floorTrapPower, fartCloud } from './traps.js';
+import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, floorTrapPower, fartCloud, carCrash } from './traps.js';
 import { findPower, cleanupPower } from './interactions.js';
 import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
@@ -16,6 +16,8 @@ import { updateEmergency, resetEmergency, requestInvestigation, endInvestigation
 const SPEEDS = [0, 1, 3, 8];
 const START_SPOTS = [[9, 8], [11, 8], [10, 7], [12, 8], [8, 7], [13, 7]];
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+// Actions that put an open flame in a sim's hands.
+const FLAME_ACTIONS = new Set(['cook', 'bake', 'grill', 'weeds', 'light', 'stoke']);
 
 class Game {
   constructor() {
@@ -265,6 +267,26 @@ class Game {
     this.log(`🪜 The pool ladder has been removed.${swimmers.length ? ` ${swimmers.join(' and ')} ${swimmers.length > 1 ? "haven't" : "hasn't"} noticed yet.` : ''}`, 'tool');
   }
 
+  crashCar(car) { this.view.street.crash(car); }
+  carCrash(x, z) { carCrash(this, x, z); }
+
+  // Any open flame within r cells of the sim: fire, lit candles or fireplace, a glowing heater,
+  // someone cooking, grilling or weeding, or a roommate who is already on fire.
+  nearFlame(s, r) {
+    const w = this.world;
+    if (w.fire.size && w.fireDistance(s.cx, s.cz) <= Math.floor(r)) return true;
+    const near = (x, z) => Math.hypot(x - s.x, z - s.z) <= r;
+    const at = o => near(o.cells[0][0] + 0.5, o.cells[0][1] + 0.5);
+    for (const id of ['candles', 'fireplace']) {
+      const o = w.objects.get(id);
+      if (o && o.lit > 0 && !o.charred && at(o)) return true;
+    }
+    const heater = w.objects.get('heater');
+    if (heater.cranked > 0 && !heater.charred && at(heater)) return true;
+    return this.sims.some(o => o.alive && near(o.x, o.z) && ((o !== s && o.status.onFire > 0)
+      || (o.action && o.action.stage === 'do' && FLAME_ACTIONS.has(o.action.def.id))));
+  }
+
   meteorStrike(sim) {
     if (this.meteors.some(m => m.sim === sim)) return;
     sim.endAction();
@@ -395,6 +417,19 @@ class Game {
         if (w.ignite(x, z)) { this.log('🔥 An ember leaps out of the fireplace and catches the rug!', 'evil'); this.sfx('fire'); }
       }
       if (fp.lit <= 0) fp.stoked = false;
+    }
+    // Candles burn down on their own. Nudged under the towels, they take the bathroom with them.
+    const c = w.objects.get('candles');
+    if (c.lit > 0) {
+      c.lit -= min;
+      if (!c.charred && Math.random() < (c.sabotaged ? 0.02 : 0.0005) * min) {
+        const [x, z] = pick([[13, 1], [13, 2], [14, 2]]);
+        if (w.ignite(x, z)) {
+          c.sabotaged = false;
+          this.log('🕯️🔥 The candles topple into the towels. The bathroom is now a feature fireplace.', 'evil');
+          this.sfx('fire');
+        }
+      }
     }
     const h = w.objects.get('heater');
     if (h.cranked > 0) {

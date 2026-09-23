@@ -180,6 +180,7 @@ export class View {
       if (p.kind === 'door') return { kind: 'door', door: g.world.doors.find(d => d.id === p.id) };
       if (p.kind === 'pool') return { kind: 'pool' };
       if (p.kind === 'visitor') return g.visit ? { kind: 'visitor' } : null;
+      if (p.kind === 'car') { const car = this.street.cars.find(c => c.id === p.id); if (car && !car.crash) return { kind: 'car', car }; continue; }
       if (p.kind === 'responder') { const person = g.responders.find(r => r.id === p.id); if (person) return { kind: 'responder', person }; continue; }
       const cx = Math.floor(hit.point.x), cz = Math.floor(hit.point.z);
       if (g.world.inPool(cx, cz)) return { kind: 'pool' };

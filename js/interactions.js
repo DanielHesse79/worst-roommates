@@ -1,7 +1,7 @@
 // Every interaction a sim can perform, plus "hand of fate" god actions.
 // Def shape: { id, label, icon, evil?, duration (min | fn), spot(sim,target,game) -> [x,z],
 //   approachSim?, available?, start?, tick?(s,t,g,a,min), finish?, facePos? }
-import { triggerFireworks, openMail, fartCloud } from './traps.js';
+import { triggerFireworks, openMail, fartCloud, dustExplosion } from './traps.js';
 import { responderSpot } from './emergency.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -30,6 +30,11 @@ function risk(s, base, o, g) {
 function notices(s, g, paranoidChance) {
   if (s.confused) return false;
   return Math.random() < (s.has('paranoid') ? paranoidChance : 0) + (g.wary ? 0.35 : 0);
+}
+// Sets a few lawn cells around a sim alight (weed torches, mostly).
+function lawnFire(g, s, n) {
+  const cells = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]].sort(() => Math.random() - 0.5);
+  for (const [dx, dz] of cells) if (n > 0 && g.world.ignite(s.cx + dx, s.cz + dz, true)) n--;
 }
 function learn(s, skill) {
   const gain = s.has('genius') ? 2 : s.has('lazy') ? 0.5 : 1;
@@ -129,15 +134,67 @@ export const OBJECT_ACTIONS = {
     { id: 'cook', label: 'Cook dinner', icon: '🍳', duration: 40, spot: useSpot, available: (s, o) => !o.charred,
       tick(s, o, g, a) {
         once(a, 'roll', 15, () => {
+          if (o.flour) { dustExplosion(g, s, o); return; }
           if (Math.random() < risk(s, 0.3 - 0.04 * s.skills.cooking, o, g)) {
             g.world.ignite(o.cells[0][0], o.cells[0][1]);
-            g.log(`🔥 ${s.name}'s cooking bursts into flames!`, 'evil');
+            s.status.onFire = 60;
+            g.view.burst(s.x, s.z, 'explosion');
+            g.log(`🔥 ${s.name}'s cooking bursts into flames, and so does ${s.first}!`, 'evil');
             g.sfx('fire');
             s.endAction();
           }
         });
       },
       finish(s, o, g) { s.addNeed('hunger', 60); learn(s, 'cooking'); g.log(`${s.first} cooks a surprisingly edible meal.`, 'dim'); } },
+    { id: 'bake', label: 'Bake bread', icon: '🍞', duration: 60, spot: useSpot, available: (s, o) => !o.charred,
+      tick(s, o, g, a) {
+        // Flour in the air plus a gas flame: sabotage makes it certain, clumsy bakers make it likely.
+        once(a, 'roll', 20, () => { if (o.flour || Math.random() < risk(s, 0.08 - 0.01 * s.skills.cooking, o, g)) dustExplosion(g, s, o); });
+      },
+      finish(s, o, g) { s.addNeed('hunger', 45); s.addNeed('fun', 15); learn(s, 'cooking'); g.log(`🍞 ${s.first} bakes a lopsided but edible loaf.`, 'dim'); } },
+  ],
+  candles: [
+    { id: 'candlelit', label: 'Relax by candlelight', icon: '🕯️', duration: 30, spot: useSpot, available: (s, o) => !o.charred,
+      start(s, o, g) { if (!(o.lit > 0)) { o.lit = 240; g.log(`🕯️ ${s.first} lights the scented candles. The scent is called "Midnight Arson".`, 'dim'); } },
+      tick(s, o, g, a, m) { s.addNeed('fun', 0.9 * m); s.addNeed('hygiene', 0.3 * m); } },
+    { id: 'lightcandles', label: 'Light the candles and leave', icon: '🔥', duration: 5, spot: useSpot, available: (s, o) => !o.charred && !(o.lit > 0),
+      finish(s, o, g) { o.lit = 240; g.log(`🕯️ ${s.first} lights the candles and wanders off. What could go wrong?`, 'dim'); } },
+    { id: 'blowcandles', label: 'Blow out the candles', icon: '💨', duration: 3, spot: useSpot, available: (s, o) => o.lit > 0,
+      finish(s, o) { o.lit = 0; } },
+  ],
+  vanity: [
+    { id: 'hair', label: 'Do your hair (lots of hairspray)', icon: '💇', duration: 20, spot: useSpot, available: (s, o) => !o.charred,
+      tick(s, o, g, a, m) { s.addNeed('hygiene', 1.2 * m); s.addNeed('fun', 0.4 * m); },
+      finish(s, o, g) {
+        // Hairspray lingers: anywhere near a flame for the next few hours and they go up like a torch.
+        const extra = !!o.sabotaged;
+        o.sabotaged = false;
+        s.status.hairspray = extra ? 240 : 120;
+        s.status.extraHold = extra;
+        g.log(extra ? `💇 ${s.name} empties a whole can of EXTRA HOLD hairspray. Their hair is now legally a fire hazard.`
+          : `💇 ${s.first} uses half a can of hairspray. Flammable, but fabulous.`, extra ? 'evil' : 'dim');
+      } },
+  ],
+  shed: [
+    { id: 'weeds', label: 'Burn weeds with the gas torch', icon: '🌿', duration: 30, spot: useSpot, available: (s, o) => !o.charred,
+      facePos: s => [s.x + 1, s.z + 1],
+      tick(s, o, g, a) {
+        once(a, 'roll', 10, () => {
+          if (o.sabotaged) {
+            o.sabotaged = false;
+            s.status.onFire = 60;
+            lawnFire(g, s, 3);
+            g.log(`🌿🔥 The weed torch's slit hose flares like a dragon. ${s.name} is now the weed.`, 'evil');
+          } else if (Math.random() < risk(s, 0.12, null, g)) {
+            lawnFire(g, s, 1);
+            if (s.has('clumsy') || Math.random() < 0.3) s.status.onFire = 30;
+            g.log(`🌿🔥 ${s.name} torches the weeds, the lawn and ${s.status.onFire > 0 ? 'their own trousers' : 'very nearly their own trousers'}.`, 'evil');
+          } else return;
+          g.sfx('fire');
+          s.endAction();
+        });
+      },
+      finish(s, o, g) { s.addNeed('fun', 20); g.log(`🌿 ${s.first} torches every weed in the garden, plus a few innocent daisies.`, 'dim'); } },
   ],
   grill: [
     { id: 'grill', label: 'Grill mystery meat', icon: '🍔', duration: 35, spot: useSpot, available: (s, o) => !o.charred,
@@ -571,6 +628,7 @@ export const TOMB_ACTIONS = [
 export const GOD_COST = {
   ladder: 20, brick: 30, gas: 25, wiring: 25, spoil: 30, rumor: 15, omen: 40,
   bookshelf: 25, fireworks: 35, piranhas: 40, ghost: 30, chili: 20, letterbomb: 35, cleanup: 10,
+  candles: 20, hairspray: 25, flour: 30, torch: 25, brakes: 40,
 };
 
 const doorCells = d => (d.axis === 'x' ? [[d.at - 1, d.pos], [d.at, d.pos]] : [[d.pos, d.at - 1], [d.pos, d.at]]);
@@ -619,7 +677,26 @@ function godPowers(pick, g) {
     if ((o.type === 'fireplace' || o.type === 'grill') && !o.charred && !o.fireworks && !(o.lit > 0)) {
       power('fireworks', 'Hide fireworks inside', '🎆', objCells(o), () => { o.fireworks = true; g.log(`🎆 A bundle of fireworks is tucked into the ${o.name}.`, 'tool'); });
     }
+    if (o.type === 'candles' && !o.charred && !o.sabotaged) {
+      power('candles', 'Light them and nudge them under the towels', '🕯️', objCells(o), () => {
+        o.sabotaged = true; o.lit = Math.max(o.lit || 0, 240);
+        g.log('🕯️ The scented candles flicker to life on their own and shuffle up against the fluffy towels.', 'tool');
+      });
+    }
+    if (o.type === 'vanity' && !o.charred && !o.sabotaged) {
+      power('hairspray', 'Swap in extra-hold hairspray', '💇', objCells(o), () => { o.sabotaged = true; g.log('💇 The hairspray on the vanity is now EXTRA HOLD. And extra flammable.', 'tool'); });
+    }
+    if (o.type === 'stove' && !o.charred && !o.flour) {
+      power('flour', 'Dust the kitchen with flour', '🍞', objCells(o), () => { o.flour = true; g.log('🍞 A fine haze of flour settles over every surface in the kitchen.', 'tool'); });
+    }
+    if (o.type === 'shed' && !o.charred && !o.sabotaged) {
+      power('torch', "Slit the weed torch's gas hose", '🌿', objCells(o), () => { o.sabotaged = true; g.log("🌿 The weed torch's gas hose now has a neat little slit in it.", 'tool'); });
+    }
     if (o.type === 'ladder') { ladderPower(); piranhaPower(); }
+  } else if (pick.kind === 'car') {
+    // Only cars passing the house can be aimed at the front garden.
+    const c = pick.car;
+    if (!c.crash && c.mesh.position.x > -6 && c.mesh.position.x < 28) power('brakes', 'Cut the brake lines', '🚗', [], () => g.crashCar(c));
   } else if (pick.kind === 'pool') {
     ladderPower();
     piranhaPower();
@@ -667,6 +744,7 @@ export function cleanupPower(pick, g) {
   if (pick.kind !== 'object') return null;
   const o = pick.obj, fixes = [];
   if (o.sabotaged) fixes.push(() => { o.sabotaged = false; });
+  if (o.flour) fixes.push(() => { o.flour = false; });
   if (o.poisoned > 0) fixes.push(() => { o.poisoned = 0; o.untraceable = false; });
   if (o.chili > 0) fixes.push(() => { o.chili = 0; });
   if (o.fireworks) fixes.push(() => { o.fireworks = false; });

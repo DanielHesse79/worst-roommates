@@ -10,6 +10,7 @@ export const SHOP = [
   { id: 'fireworks', kind: 'trap', name: 'Fireworks stash', icon: '🎆', price: 200, desc: 'Unlocks fireworks hidden in the fireplace or grill.' },
   { id: 'ghost', kind: 'trap', name: 'Restless spirits', icon: '👻', price: 200, desc: 'Unlocks waking the dead: ghosts that scare the weak to death at night.' },
   { id: 'piranhas', kind: 'trap', name: 'Piranhas', icon: '🐟', price: 250, desc: 'Unlocks stocking the pool with piranhas.' },
+  { id: 'brakes', kind: 'trap', name: 'Brake-line cutters', icon: '🚗', price: 200, desc: 'Unlocks cutting the brakes on passing cars. They crash into the front garden and explode.' },
   { id: 'letterbomb', kind: 'trap', name: 'Letter bomb', icon: '📬', price: 250, desc: 'Unlocks posting explosive parcels to the mailbox.' },
   { id: 'pockets', kind: 'upgrade', name: 'Deep pockets', icon: '👛', price: 150, desc: 'Start every contract with 30 extra Malice.' },
   { id: 'silent', kind: 'upgrade', name: 'Silent tools', icon: '🤫', price: 200, desc: 'Being seen using a power raises suspicion by 10 instead of 18.' },

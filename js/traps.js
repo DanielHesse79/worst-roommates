@@ -16,6 +16,11 @@ export const TRAPS = [
   { id: 'letterbomb', name: 'Letter bomb', icon: '📬', target: 'object', desc: 'Post a parcel. The flag goes up, someone gets curious, and the mailbox goes off. Blatantly murder.' },
   { id: 'piranhas', name: 'Piranhas', icon: '🐟', target: 'pool', desc: 'Stock the pool. Swimmers get eaten — faster if the ladder has gone missing.' },
   { id: 'ghost', name: 'Restless spirit', icon: '👻', target: 'tomb', desc: "Wake a grave's ghost. It haunts the lot at night and can scare the weak to death." },
+  { id: 'candles', name: 'Candles by the towels', icon: '🕯️', target: 'object', desc: 'Light the bathroom candles and nudge them under the towels. Sooner or later the bathroom goes up.' },
+  { id: 'hairspray', name: 'Extra-hold hairspray', icon: '💇', target: 'object', desc: 'Swap the hairspray at the vanity. Whoever does their hair next becomes a walking torch near any flame: candles, stove, fireplace, grill.' },
+  { id: 'flour', name: 'Flour everywhere', icon: '🍞', target: 'object', desc: 'Dust the kitchen with fine flour. The next person to cook or bake at the stove sets off a dust explosion.' },
+  { id: 'torch', name: 'Leaky weed torch', icon: '🌿', target: 'object', desc: "Slit the gas hose on the weed torch in the garden shed. The next gardener goes up along with the weeds." },
+  { id: 'brakes', name: 'Cut brake lines', icon: '🚗', target: 'car', desc: 'Click a passing car. It jumps the kerb, ploughs into the front garden and explodes. Time it well (pausing helps).' },
 ];
 export const TRAP_COST = { wax: 15, beartrap: 25 };
 
@@ -110,7 +115,7 @@ export function triggerFireworks(g, o) {
   return true;
 }
 
-export function explode(g, x, z, { cause = 'Explosion', suspicion = 12, radius = 2.4, msg = '💥 KABOOM! Fireworks go off in every direction at once.' } = {}) {
+export function explode(g, x, z, { cause = 'Explosion', suspicion = 12, radius = 2.4, lawn = false, msg = '💥 KABOOM! Fireworks go off in every direction at once.' } = {}) {
   g.view.burst(x, z, 'explosion');
   g.view.shake = 0.9;
   g.sfx('explosion');
@@ -121,14 +126,32 @@ export function explode(g, x, z, { cause = 'Explosion', suspicion = 12, radius =
     if (d > radius) continue;
     if (!hurt(g, s, 25 + 110 * (1 - d / radius), cause, '#ffb347')) {
       s.endAction();
-      s.status.passedOut = 40;
       if (!s.status.swimming) s.status.onFire = 20;
     }
   }
   for (let dx = -1; dx <= 1; dx++) {
-    for (let dz = -1; dz <= 1; dz++) if (Math.random() < 0.5) g.world.ignite(Math.floor(x) + dx, Math.floor(z) + dz);
+    for (let dz = -1; dz <= 1; dz++) if (Math.random() < 0.5) g.world.ignite(Math.floor(x) + dx, Math.floor(z) + dz, lawn);
   }
   g.addSuspicion(suspicion);
+}
+
+const CAR_NAMES = ['hatchback', 'minivan', 'delivery van', 'second-hand sports car', 'driving-school car', 'ice-cream van'];
+
+// A car with no brakes ends its journey in the front garden (see Street.crash for the swerve).
+export function carCrash(g, x, z) {
+  g.world.wreck = { x, z };
+  g.sfx('crash');
+  explode(g, x, z, { cause: 'Car Crash', suspicion: 3, radius: 2.6, lawn: true,
+    msg: `🚗💥 A ${CAR_NAMES[Math.floor(Math.random() * CAR_NAMES.length)]} loses its brakes, jumps the kerb and ploughs into the front garden. Then it explodes, because of course it does.` });
+  for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, -1]]) g.world.ignite(Math.floor(x) + dx, Math.floor(z) + dz, true);
+}
+
+// Flour hanging in the air meets the gas flame.
+export function dustExplosion(g, s, o) {
+  o.flour = false;
+  const [cx, cz] = o.cells[0];
+  explode(g, cx + 0.5, cz + 1, { suspicion: 5, radius: 2.8,
+    msg: `🍞💥 A cloud of flour drifts over the gas flame. ${s.name} learns what a dust explosion is, very briefly.` });
 }
 
 export function openMail(g, s, o) {

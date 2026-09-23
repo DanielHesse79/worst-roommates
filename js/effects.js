@@ -105,7 +105,8 @@ export class Effects {
       // With the roof on, the smoke pours out of the roof (and the chimney, when the fire's lit).
       const roof = g.view && g.view.roofOn ? g.view.lot.roof.userData : null;
       for (const f of w.fire.values()) {
-        if (Math.random() < 0.5) this.burst(f.x + 0.5, f.z + 0.5, roof ? 'plume' : 'smoke', roof ? roof.heightAt(f.z + 0.5) : 0.9);
+        const under = roof && !f.outdoor;
+        if (Math.random() < 0.5) this.burst(f.x + 0.5, f.z + 0.5, under ? 'plume' : 'smoke', under ? roof.heightAt(f.z + 0.5) : 0.9);
       }
       const fp = w.objects.get('fireplace');
       if (roof && fp.lit > 0 && Math.random() < 0.4) this.burst(roof.chimney[0], roof.chimney[2], 'smoke', roof.chimney[1]);

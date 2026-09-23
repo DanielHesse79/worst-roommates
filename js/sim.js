@@ -37,7 +37,7 @@ export class Sim {
     this.path = null; this.pathGoal = null; this.pathVersion = -1;
     this.queue = [];
     this.action = null;
-    this.status = { poisoned: 0, panic: 0, onFire: 0, trapped: 0, gassy: 0, swimming: false, stuck: false, passedOut: 0, engaged: 0, engagedWith: null };
+    this.status = { poisoned: 0, panic: 0, onFire: 0, trapped: 0, gassy: 0, hairspray: 0, extraHold: false, soak: 0, swimming: false, stuck: false, passedOut: 0, engaged: 0, engagedWith: null };
     this.alive = true;
     this.facing = 0;
     this.moving = false;
@@ -105,9 +105,19 @@ export class Sim {
       return;
     }
 
+    if (this.status.onFire > 0 && !this.status.swimming) {
+      this.runForWater(dt, game);
+      if (!this.alive) return;
+      this.checkCell(game);
+      this.updateThought();
+      return;
+    }
+    this.status.sprinting = false;
+
     if (this.status.swimming) {
       this.swimAround(dt, game);
-      const inSwimAction = this.action && this.action.def.id === 'swim' && this.action.stage === 'do';
+      if (this.status.soak > 0) this.status.soak -= min;
+      const inSwimAction = (this.action && this.action.def.id === 'swim' && this.action.stage === 'do') || this.status.soak > 0;
       if (!inSwimAction) {
         if (game.world.ladder.present) {
           this.exitPool(game);
@@ -124,6 +134,7 @@ export class Sim {
       this.status.engaged -= min;
       const w = this.status.engagedWith;
       if (w) this.facing = Math.atan2(w.x - this.x, w.z - this.z);
+      this.separate(dt, game);
       return;
     }
 
@@ -152,16 +163,36 @@ export class Sim {
 
     if (!this.action && this.queue.length) this.action = this.queue.shift();
     if (this.action) {
+      this.aside = null;
       this.runAction(dt, min, game);
     } else if (this.status.panic > 0) {
       this.panicMove(dt, game);
     } else {
       this.moving = false;
+      this.stepAside(dt, game);
     }
     if (!this.alive) return;
+    const a = this.action;
+    if (!this.moving && (!a || a.stage !== 'do' || a.def.approachSim)) this.separate(dt, game);
     this.checkCell(game);
     if (!this.alive) return;
     this.updateThought();
+  }
+
+  // Standing sims (idle or mid-conversation) gently shuffle apart instead of overlapping.
+  // Sims using an object stay put; nobody gets nudged off a bed or out of the bath.
+  separate(dt, game) {
+    const w = game.world;
+    for (const o of game.sims) {
+      if (o === this || !o.alive || o.status.swimming || this.status.swimming) continue;
+      const dx = this.x - o.x, dz = this.z - o.z, d = Math.hypot(dx, dz);
+      if (d >= 0.55) continue;
+      const ux = d > 0.01 ? dx / d : Math.cos(this.id), uz = d > 0.01 ? dz / d : Math.sin(this.id);
+      const step = Math.min(0.55 - d, 1.2 * dt);
+      const nx = this.x + ux * step, nz = this.z + uz * step, cx = Math.floor(nx), cz = Math.floor(nz);
+      if ((cx !== this.cx || cz !== this.cz) && !w.canStep(this.cx, this.cz, cx, cz)) continue;
+      this.x = nx; this.z = nz;
+    }
   }
 
   // Fire floor traps etc. when stepping onto a new cell.
@@ -231,6 +262,19 @@ export class Sim {
     }
 
     const world = game.world;
+    // Fresh hairspray plus any open flame nearby: instant human torch.
+    if (st.hairspray > 0) {
+      st.hairspray -= min;
+      if (!st.swimming && st.onFire <= 0 && game.nearFlame(this, st.extraHold ? 2.5 : 1.3)) {
+        st.hairspray = 0;
+        st.onFire = 60;
+        this.health -= 15;
+        game.view.burst(this.x, this.z, 'explosion');
+        game.sfx('fire');
+        game.log(`💇🔥 ${this.name}'s hairspray meets an open flame. They go up like a birthday cake.`, 'evil');
+        if (this.health <= 0) return game.kill(this, 'Fire');
+      }
+    }
     const inFlames = !st.swimming && world.isBurning(this.cx, this.cz);
     if (inFlames) {
       this.health -= 2.5 * min;
@@ -241,15 +285,11 @@ export class Sim {
     }
     if (!st.swimming) {
       if (st.onFire > 0) {
-        st.onFire -= min;
-        this.health -= 3 * min;
+        // Burning clothes don't go out on their own: only water (the pool or a fire hose) saves you.
+        this.health -= 5 * min;
         if (this.health <= 0) return game.kill(this, 'Fire');
         // A burning, panicking roommate spreads the fire wherever they run.
         if (Math.random() < 0.04 * min && world.ignite(this.cx, this.cz)) game.log(`🔥 ${this.first} sets the ${world.roomAt(this.cx, this.cz)?.name || 'floor'} alight while running around on fire.`, 'evil');
-        if (!inFlames && Math.random() < 0.02 * min) {
-          st.onFire = 0;
-          game.log(`${this.first} finally remembers to stop, drop and roll.`, 'dim');
-        }
       } else if (world.fire.size && world.fireDistance(this.cx, this.cz) <= 1 && Math.random() < 0.012 * min) {
         st.onFire = 30;
         game.log(`${this.name} catches fire!`, 'evil');
@@ -288,10 +328,13 @@ export class Sim {
     const def = a.def;
     if (a.stage === 'go') {
       if (a.target && a.target.alive === false) return this.fail(game, 'is dead');
-      const closeEnough = def.approachSim && Math.hypot(a.target.x - this.x, a.target.z - this.z) < 1.6;
+      // Close enough to talk, but not standing on top of them (then step to a neighbouring cell first).
+      const gap = def.approachSim ? Math.hypot(a.target.x - this.x, a.target.z - this.z) : 0;
+      const closeEnough = def.approachSim && gap < 1.6 && gap > 0.6;
       if (!closeEnough) {
-        const goal = def.approachSim ? this.adjacentTo(a.target, game.world)
+        const spot = def.approachSim ? this.adjacentTo(a.target, game.world, game)
           : def.spot ? def.spot(this, a.target, game) : [this.cx, this.cz];
+        const goal = spot && !def.approachSim && def.id !== 'swim' ? this.freeSpot(spot, game, a) : spot;
         if (!goal) return this.fail(game, "can't find a way to do that");
         const arrived = this.walkTowards(goal, dt, game.world);
         if (arrived === null) return this.fail(game, "can't reach it");
@@ -328,14 +371,62 @@ export class Sim {
     this.endAction();
   }
 
-  adjacentTo(t, world) {
+  // True if someone other than this sim is standing still on the cell (walking past doesn't count).
+  occupied(x, z, game) {
+    return game.sims.some(o => o !== this && o.alive && !o.status.swimming && !o.moving && o.cx === x && o.cz === z)
+      || (game.responders || []).some(p => !p.moving && Math.floor(p.x) === x && Math.floor(p.z) === z);
+  }
+
+  // Someone else is already on their way to stand on this cell.
+  claimed(x, z, game) {
+    return game.sims.some(o => o !== this && o.alive && o.action && o.action.stage === 'go' && o.pathGoal && o.pathGoal[0] === x && o.pathGoal[1] === z);
+  }
+
+  // The goal cell, or the nearest free neighbour in the same room if someone is already standing there.
+  freeSpot(goal, game, a) {
+    const key = goal[0] + ',' + goal[1];
+    if (a && a.data.altFor === key) return a.data.alt;
+    if (!this.occupied(goal[0], goal[1], game)) return goal;
+    const w = game.world;
+    let best = null, bestD = Infinity;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const nx = goal[0] + dx, nz = goal[1] + dz;
+        if ((!dx && !dz) || !w.canStep(goal[0], goal[1], nx, nz) || this.occupied(nx, nz, game) || this.claimed(nx, nz, game)) continue;
+        const d = Math.hypot(dx, dz) + 0.1 * Math.hypot(nx + 0.5 - this.x, nz + 0.5 - this.z);
+        if (d < bestD) { bestD = d; best = [nx, nz]; }
+      }
+    }
+    if (!best) return goal;
+    if (a) { a.data.altFor = key; a.data.alt = best; }
+    return best;
+  }
+
+  // Idle and standing on top of another roommate: shuffle over to a free cell.
+  stepAside(dt, game) {
+    if (this.aside) {
+      if (this.walkTowards(this.aside, dt, game.world) !== false) this.aside = null;
+      return;
+    }
+    const other = game.sims.find(o => o !== this && o.alive && !o.status.swimming && !o.moving && Math.hypot(o.x - this.x, o.z - this.z) < 0.45);
+    // When two idle sims overlap, only one of them moves.
+    if (!other || (!other.action && other.id > this.id)) return;
+    const w = game.world;
+    const free = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]
+      .map(([dx, dz]) => [this.cx + dx, this.cz + dz])
+      .find(([nx, nz]) => w.canStep(this.cx, this.cz, nx, nz) && !this.occupied(nx, nz, game) && !w.isBurning(nx, nz));
+    if (free) this.aside = free;
+  }
+
+  adjacentTo(t, world, game) {
     let best = null, bestD = Infinity;
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
         if (!dx && !dz) continue;
         const nx = t.cx + dx, nz = t.cz + dz;
         if (world.isBlocked(nx, nz)) continue;
-        const d = Math.hypot(nx + 0.5 - this.x, nz + 0.5 - this.z);
+        // Another roommate standing there counts as a long walk around.
+        const d = Math.hypot(nx + 0.5 - this.x, nz + 0.5 - this.z) + (game && this.occupied(nx, nz, game) ? 5 : 0);
         if (d < bestD) { bestD = d; best = [nx, nz]; }
       }
     }
@@ -389,7 +480,8 @@ export class Sim {
         const f = w.nearestFire(this.cx, this.cz) || { x: this.cx, z: this.cz };
         const spots = [[5, 14], [19, 13], [0, 0], [21, 1]].sort((a, b) =>
           Math.hypot(b[0] - f.x, b[1] - f.z) - Math.hypot(a[0] - f.x, a[1] - f.z));
-        this.panicGoal = spots.find(s => w.findPath(this.cx, this.cz, s[0], s[1])) || null;
+        const spot = spots.find(s => w.findPath(this.cx, this.cz, s[0], s[1]));
+        this.panicGoal = spot ? this.freeSpot(spot, game) : null;
         if (!this.panicGoal) this.status.fleeing = false;
       }
       if (this.panicGoal && this.walkTowards(this.panicGoal, dt * 1.3, w) === null) this.panicGoal = null;
@@ -406,8 +498,46 @@ export class Sim {
 
   // ---------- pool ----------
 
-  enterPool(game) {
-    const e = game.world.ladder.entry;
+  // Burning: find the nearest bit of pool edge that can actually be reached, and run.
+  waterSpot(game) {
+    const w = game.world, edges = [];
+    for (let x = POOL.x0; x < POOL.x1; x++) edges.push([x, POOL.z0 - 1, x, POOL.z0], [x, POOL.z1, x, POOL.z1 - 1]);
+    for (let z = POOL.z0; z < POOL.z1; z++) edges.push([POOL.x0 - 1, z, POOL.x0, z], [POOL.x1, z, POOL.x1 - 1, z]);
+    let best = null, bestLen = Infinity;
+    for (const [ex, ez, px, pz] of edges) {
+      if (w.isBlocked(ex, ez)) continue;
+      const path = w.findPath(this.cx, this.cz, ex, ez);
+      if (path && path.length < bestLen) { bestLen = path.length; best = { edge: [ex, ez], into: [px, pz], version: w.version }; }
+    }
+    return best;
+  }
+
+  runForWater(dt, game) {
+    if (this.action) this.endAction();
+    this.queue = [];
+    this.status.follow = null;
+    const st = this.status, w = game.world;
+    if (!st.sprinting || !this.water || this.water.version !== w.version) {
+      this.water = this.waterSpot(game) || { none: true, version: w.version };
+      if (!st.sprinting && !this.water.none) game.log(`🔥🏊 ${this.name} is on fire and sprinting for the pool!`, 'evil');
+      st.sprinting = true;
+    }
+    if (this.water.none) { this.panicMove(dt, game); return; } // walled in: run around screaming instead
+    const r = this.walkTowards(this.water.edge, dt * 1.3, w);
+    if (r === null) { this.water = null; return; }
+    if (!r) return;
+    // Cannonball. No ladder needed to get in; getting out is another matter.
+    this.enterPool(game, this.water.into);
+    this.status.soak = 12;
+    this.water = null;
+    game.sfx('splash');
+    game.view.burst(this.x, this.z, 'splash');
+    game.view.burst(this.x, this.z, 'steam');
+    game.log(`💦 ${this.name} hurls themselves into the pool with a loud hiss. Extinguished!${w.ladder.present ? '' : ' Now, about that missing ladder...'}`, 'dim');
+  }
+
+  enterPool(game, into) {
+    const e = into || game.world.ladder.entry;
     this.place(e[0], e[1]);
     this.status.swimming = true;
     this.status.stuck = false;

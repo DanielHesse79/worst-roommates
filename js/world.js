@@ -162,17 +162,19 @@ export class World {
 
   isBurning(x, z) { return this.fire.has(cellKey(x, z)); }
 
-  canBurn(x, z) {
+  // `lawn`: dry grass can burn too, but only when something outdoors sets it alight.
+  canBurn(x, z, lawn = false) {
     const k = cellKey(x, z);
-    if (this.fire.has(k) || this.scorched.has(k)) return false;
+    if (!this.inBounds(x, z) || this.inPool(x, z) || this.fire.has(k) || this.scorched.has(k)) return false;
     const obj = this.objectAt(x, z);
-    return this.isIndoor(x, z) || (obj && obj.type === 'grill');
+    return lawn || this.isIndoor(x, z) || (obj && obj.type === 'grill');
   }
 
-  // Flames burn long enough to keep spreading until the fire brigade arrives.
-  ignite(x, z) {
-    if (!this.canBurn(x, z)) return false;
-    this.fire.set(cellKey(x, z), { x, z, life: 150 + Math.random() * 100, spread: 0 });
+  // Flames burn long enough to keep spreading until the fire brigade arrives. Lawn fires burn out faster.
+  ignite(x, z, lawn = false) {
+    if (!this.canBurn(x, z, lawn)) return false;
+    const outdoor = !this.isIndoor(x, z);
+    this.fire.set(cellKey(x, z), { x, z, outdoor, life: outdoor ? 50 + Math.random() * 40 : 150 + Math.random() * 100, spread: 0 });
     return true;
   }
 
@@ -208,21 +210,19 @@ export class World {
       if (obj) obj.charred = true;
       while (f.spread >= 6) {
         f.spread -= 6;
-        if (Math.random() < 0.25) {
-          const [dx, dz] = DIRS4[Math.floor(Math.random() * 4)];
-          const nx = f.x + dx, nz = f.z + dz;
-          // Cheap drywall: now and then the flames eat straight through a wall.
-          const through = !this.edgeBlocked(f.x, f.z, nx, nz) || Math.random() < 0.25;
-          if (this.inBounds(nx, nz) && this.isIndoor(nx, nz) && through && this.canBurn(nx, nz)) {
-            newFires.push([nx, nz]);
-          }
-        }
+        if (Math.random() >= (f.outdoor ? 0.15 : 0.25)) continue;
+        const [dx, dz] = DIRS4[Math.floor(Math.random() * 4)];
+        const nx = f.x + dx, nz = f.z + dz;
+        // Cheap drywall: now and then the flames eat straight through a wall.
+        if (this.edgeBlocked(f.x, f.z, nx, nz) && Math.random() >= 0.25) continue;
+        // House fires stay indoors; a lawn fire creeps across the grass and into the house.
+        if (this.isIndoor(nx, nz) ? this.canBurn(nx, nz) : f.outdoor && this.canBurn(nx, nz, true)) newFires.push([nx, nz]);
       }
       if (f.life <= 0) {
         this.fire.delete(k);
         this.scorched.add(k);
       }
     }
-    for (const [x, z] of newFires) this.ignite(x, z);
+    for (const [x, z] of newFires) this.ignite(x, z, true);
   }
 }
