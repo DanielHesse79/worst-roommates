@@ -1,14 +1,35 @@
-// Procedural sound effects with Web Audio: no audio files needed.
+// Sound effects with Web Audio. Recorded clips in sounds/ (built by tools/build_sounds.py) are used
+// when they load; every sound also has a synthesised recipe below as a fallback.
 
 const MUTE_KEY = 'worst-roommates-muted';
 const VOLUME_KEY = 'worst-roommates-volume';
 const AMBIENT_KEY = 'worst-roommates-ambience';
 const MIN_GAP = { blah: 1.1, punch: 0.22, click: 0.06, fire: 0.6, splash: 0.4, fart: 1, death: 0.3, explosion: 0.3, knock: 1.2, siren: 2.4, police: 2.0 };
 
+// Recorded variants per sound: name.mp3, name-2.mp3, ... A random one plays each time.
+const SAMPLE_BANK = {
+  punch: 3, slip: 4, death: 1, ghost: 4, zap: 1, explosion: 1, meteor: 4, fire: 4, siren: 4, police: 4,
+  gulp: 3, crash: 2, snap: 2, fart: 4, paper: 3, splash: 4, fail: 2, scream: 4, win: 4, knock: 4,
+};
+const SAMPLE_GAIN = { siren: 0.45, police: 0.4, ghost: 0.6, meteor: 0.6, fire: 0.6, knock: 0.8 };
+const DEFAULT_GAIN = 0.7;
+const LOOPED = new Set(['siren', 'police']); // chained back to back while the vehicle is moving
+const STINGS = new Set(['win', 'fail', 'death']); // music: never pitch-shifted
+// Background loops: birds by day, crickets by night.
+const AMBIENT_BANK = { day: ['amb-day', 4], night: ['amb-night', 3] };
+const AMBIENT_GAIN = 0.5;
+const LOOP_MARGIN = 0.06; // skip MP3 padding so the loop seam stays silent
+
 export class Sfx {
   constructor() {
     this.ctx = null;
     this.last = {};
+    this.until = {};
+    this.lastVariant = {};
+    this.samples = {};
+    this.ambient = {};
+    this.ambientRequested = {};
+    this.loop = null;
     this.volume = 0.55;
     this.ambience = true;
     this.ambientTime = 4;
@@ -29,6 +50,7 @@ export class Sfx {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       this.createGraph(new AC());
+      this.loadSamples();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     return this.ctx;
@@ -78,8 +100,34 @@ export class Sfx {
     return this.ambience;
   }
 
+  // Fetches and decodes every recorded effect in the background. Whatever fails keeps its synthesised version.
+  loadSamples() {
+    if (typeof fetch !== 'function') return;
+    for (const [name, n] of Object.entries(SAMPLE_BANK)) {
+      for (let i = 1; i <= n; i++) this.loadInto(this.samples, name, `sounds/${name}${i > 1 ? '-' + i : ''}.mp3`);
+    }
+  }
+
+  // Ambience loops are bigger, so each one is only fetched when its time of day first comes round.
+  loadAmbient(mode) {
+    if (this.ambientRequested[mode] || typeof fetch !== 'function') return;
+    this.ambientRequested[mode] = true;
+    const [file, n] = AMBIENT_BANK[mode];
+    for (let i = 1; i <= n; i++) this.loadInto(this.ambient, mode, `sounds/${file}${i > 1 ? '-' + i : ''}.mp3`);
+  }
+
+  loadInto(bank, key, url) {
+    fetch(url)
+      .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(url))))
+      .then(data => this.ctx.decodeAudioData(data))
+      .then(buffer => { (bank[key] = bank[key] || []).push(buffer); })
+      .catch(() => { /* no file: the synthesised sound stays */ });
+  }
+
   update(dt, running, night, burning) {
-    if (!running || !this.ambience || this.muted || !this.ctx || this.ctx.state !== 'running') return;
+    const on = running && this.ambience && !this.muted && !!this.ctx && this.ctx.state === 'running';
+    this.syncAmbientLoop(on ? (night ? 'night' : 'day') : null);
+    if (!on) return;
     this.ambientTime -= dt;
     if (this.ambientTime > 0) return;
     this.ambientTime = burning ? 2.5 : 7 + Math.random() * 5;
@@ -87,11 +135,42 @@ export class Sfx {
     if (burning) {
       this.noise(t, 0.5, 0.035, 'bandpass', 600, 1800, 0.6);
       this.noise(t + 0.15, 0.025, 0.06, 'highpass', 1700);
+    } else if (this.loop) {
+      // Recorded birds or crickets are already playing.
     } else if (night) {
       for (let i = 0; i < 3; i++) this.tone('sine', 3100, 2950, t + i * 0.18, 0.07, 0.015);
     } else {
       for (let i = 0; i < 2; i++) this.tone('sine', 1500 + i * 300, 2600, t + i * 0.18, 0.11, 0.022);
     }
+  }
+
+  // One looping ambience clip for the time of day, crossfaded when it changes and faded out on pause.
+  syncAmbientLoop(mode) {
+    if (!this.ctx) return;
+    const cur = this.loop;
+    if ((cur ? cur.mode : null) === mode) return;
+    const bank = mode ? this.ambient[mode] : null;
+    if (mode && !(bank && bank.length)) this.loadAmbient(mode);
+    const t = this.ctx.currentTime;
+    if (cur) {
+      cur.gain.gain.setTargetAtTime(0, t, 0.5);
+      cur.src.stop(t + 3);
+      this.loop = null;
+    }
+    if (!bank || !bank.length) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = bank[Math.floor(Math.random() * bank.length)];
+    src.loop = true;
+    src.loopStart = LOOP_MARGIN;
+    src.loopEnd = src.buffer.duration - LOOP_MARGIN;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.setTargetAtTime(AMBIENT_GAIN, t, 0.8);
+    src.connect(gain);
+    gain.connect(this.compressor);
+    src.onended = () => { src.disconnect(); gain.disconnect(); };
+    src.start(t, LOOP_MARGIN + Math.random() * (src.loopEnd - LOOP_MARGIN));
+    this.loop = { mode, src, gain };
   }
 
   voice(id = 0, mood = 'chat', length = 28) {
@@ -123,10 +202,36 @@ export class Sfx {
   play(name) {
     if (this.muted || document.hidden || !this.ctx || this.ctx.state !== 'running') return;
     const now = this.ctx.currentTime;
-    if (MIN_GAP[name] && now - (this.last[name] ?? -10) < MIN_GAP[name]) return;
+    const bank = this.samples[name];
+    const recorded = !!(bank && bank.length);
+    // A recorded siren plays through before the next one starts; everything else keeps its minimum gap.
+    if (recorded && LOOPED.has(name)) { if (now < (this.until[name] ?? 0)) return; }
+    else if (MIN_GAP[name] && now - (this.last[name] ?? -10) < MIN_GAP[name]) return;
     this.last[name] = now;
+    if (recorded) {
+      const length = this.playSample(name, bank, now);
+      if (LOOPED.has(name)) this.until[name] = now + length - 0.03;
+      return;
+    }
     const fn = SOUNDS[name];
     if (fn) fn(this, now);
+  }
+
+  // Plays a random variant (never the same one twice running), slightly re-pitched so repeats don't grate.
+  playSample(name, bank, t) {
+    let i = Math.floor(Math.random() * bank.length);
+    if (bank.length > 1 && i === this.lastVariant[name]) i = (i + 1) % bank.length;
+    this.lastVariant[name] = i;
+    const src = this.ctx.createBufferSource();
+    src.buffer = bank[i];
+    if (!LOOPED.has(name) && !STINGS.has(name)) src.playbackRate.value = 0.94 + Math.random() * 0.12;
+    const gain = this.ctx.createGain();
+    gain.gain.value = SAMPLE_GAIN[name] ?? DEFAULT_GAIN;
+    src.connect(gain);
+    gain.connect(this.compressor);
+    src.onended = () => { src.disconnect(); gain.disconnect(); };
+    src.start(t);
+    return src.buffer.duration / src.playbackRate.value;
   }
 
   // ---- building blocks ----

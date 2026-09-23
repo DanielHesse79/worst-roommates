@@ -1,2 +1,3 @@
 * text=auto eol=lf
 vendor/*.min.js -diff linguist-vendored
+*.mp3 binary

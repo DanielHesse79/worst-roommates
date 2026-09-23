@@ -8,6 +8,7 @@ The current game, **Worst Roommates**, is a static JavaScript/Three.js applicati
 - `js/main.js` coordinates the game loop and session state. Simulation lives in `sim.js`, `world.js`, `autonomy.js`, `interactions.js`, `traps.js`, `visitors.js`, and `emergency.js` (fire brigade and police searches).
 - `js/data.js` holds shared definitions; `js/contracts.js` defines campaign objectives, evaluation, and saved progress.
 - `js/view.js`, `models.js`, `lot.js`, `garden.js`, and `effects.js` handle rendering and procedural assets; `js/ui.js` manages the interface.
+- `sounds/` holds the recorded effects and ambience loops loaded by `js/audio.js` (which falls back to synthesised sounds). Raw clips go in the gitignored `sounds/originals/`; `python tools/build_sounds.py` (needs ffmpeg) trims, level-matches and renames them.
 - `vendor/three.module.min.js` supplies Three.js through the HTML import map. Avoid hand-editing this dependency.
 - `v1-2d/` contains the earlier 2D game. Keep changes scoped to the intended version.
 

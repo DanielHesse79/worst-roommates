@@ -5,3 +5,6 @@
 node_modules/
 .DS_Store
 Thumbs.db
+
+# Raw clips from Suno; tools/build_sounds.py turns them into the game sounds in sounds/
+sounds/originals/

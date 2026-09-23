@@ -509,6 +509,7 @@ export const SIM_ACTIONS = [
         t.status.poisoned += 110;
         t.status.untraceable = true;
         changeRel(s, t, 10);
+        g.sfx('gulp');
         g.log(`🍸 Dr. Asraa Z hands ${t.first} a cocktail with a smile. ${t.first} doesn't even think to hesitate.`, 'evil');
         return;
       }
@@ -519,6 +520,7 @@ export const SIM_ACTIONS = [
       }
       t.status.poisoned += 60;
       changeRel(s, t, 5);
+      g.sfx('gulp');
       g.log(`🍹 ${t.name} gulps down ${s.first}'s "special" drink. Delicious. Deadly?`, 'evil');
     } },
   { id: 'sbd', label: 'Let one rip (silent but deadly)', icon: '💨', evil: true, approachSim: true, duration: 6,

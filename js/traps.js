@@ -172,7 +172,8 @@ export function openMail(g, s, o) {
   explode(g, cx + 0.5, cz + 0.5, { cause: 'Letter Bomb', suspicion: 25, radius: 1.9, msg: `📬💥 ${s.name} opens a suspiciously ticking parcel.` });
 }
 
-// A gassy sim lets one go: everyone close by (but not the culprit) suffers. Small rooms make it worse.
+// A gassy sim lets one go: everyone close by suffers, but never the culprit, and anyone gassy
+// themselves is nose-blind to it. Small rooms make it worse.
 export function fartCloud(g, s, strength = 1) {
   g.view.burst(s.x, s.z, 'gas');
   g.sfx('fart');
@@ -180,7 +181,7 @@ export function fartCloud(g, s, strength = 1) {
   const boost = room && room.name === 'Bathroom' ? 1.7 : 1;
   const victims = [];
   for (const o of g.sims) {
-    if (o === s || !o.alive || o.status.swimming) continue;
+    if (o === s || !o.alive || o.status.swimming || o.status.gassy > 0) continue;
     if (Math.hypot(o.x - s.x, o.z - s.z) > 2) continue;
     victims.push(o.first);
     o.addNeed('fun', -12);
