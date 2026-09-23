@@ -3,7 +3,7 @@
 const MUTE_KEY = 'worst-roommates-muted';
 const VOLUME_KEY = 'worst-roommates-volume';
 const AMBIENT_KEY = 'worst-roommates-ambience';
-const MIN_GAP = { blah: 1.1, punch: 0.22, click: 0.06, fire: 0.6, splash: 0.4, fart: 1, death: 0.3, explosion: 0.3, knock: 1.2 };
+const MIN_GAP = { blah: 1.1, punch: 0.22, click: 0.06, fire: 0.6, splash: 0.4, fart: 1, death: 0.3, explosion: 0.3, knock: 1.2, siren: 2.4, police: 2.0 };
 
 export class Sfx {
   constructor() {
@@ -246,6 +246,17 @@ export const SOUNDS = {
   },
   blah(a) { a.voice(2, 'chat', 18); },
   paper(a, t) { a.noise(t, 0.17, 0.14, 'highpass', 1800); a.tone('triangle', 760, 420, t + 0.12, 0.07, 0.1); },
+  siren(a, t) {
+    a.tone('triangle', 620, 1180, t, 1.1, 0.12, 0.08);
+    a.tone('sawtooth', 620, 1180, t, 1.1, 0.025, 0.08);
+    a.tone('triangle', 1180, 620, t + 1.2, 1.1, 0.12, 0.08);
+  },
+  police(a, t) {
+    for (let i = 0; i < 4; i++) {
+      a.tone('square', 960, 960, t + i * 0.5, 0.22, 0.04);
+      a.tone('square', 740, 740, t + i * 0.5 + 0.25, 0.22, 0.04);
+    }
+  },
   alarm(a, t) { for (let i = 0; i < 3; i++) { a.tone('square', 880, 880, t + i * 0.25, 0.1, 0.08); a.tone('square', 660, 660, t + i * 0.25 + 0.12, 0.1, 0.08); } },
   win(a, t) { [523, 659, 784, 1046].forEach((f, i) => a.tone('triangle', f, f, t + i * 0.12, 0.35, 0.18)); },
   fail(a, t) { [392, 370, 349, 262].forEach((f, i) => { const o = a.tone('sawtooth', f, f * 0.97, t + i * 0.35, 0.4, 0.1); a.vibrato(o, t + i * 0.35, 6, i === 3 ? 12 : 0, 0.4); }); },

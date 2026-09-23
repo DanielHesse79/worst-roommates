@@ -5,7 +5,7 @@
 The current game, **Worst Roommates**, is a static JavaScript/Three.js application.
 
 - `index.html` and `style.css` define the page, controls, and overlays.
-- `js/main.js` coordinates the game loop and session state. Simulation lives in `sim.js`, `world.js`, `autonomy.js`, `interactions.js`, and `traps.js`.
+- `js/main.js` coordinates the game loop and session state. Simulation lives in `sim.js`, `world.js`, `autonomy.js`, `interactions.js`, `traps.js`, `visitors.js`, and `emergency.js` (fire brigade and police searches).
 - `js/data.js` holds shared definitions; `js/contracts.js` defines campaign objectives, evaluation, and saved progress.
 - `js/view.js`, `models.js`, `lot.js`, `garden.js`, and `effects.js` handle rendering and procedural assets; `js/ui.js` manages the interface.
 - `vendor/three.module.min.js` supplies Three.js through the HTML import map. Avoid hand-editing this dependency.

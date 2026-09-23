@@ -33,7 +33,7 @@ export function box(w, h, d, color, x = 0, y = 0, z = 0, opts) {
   return m;
 }
 
-function cyl(rt, rb, h, color, x = 0, y = 0, z = 0, seg = 12) {
+export function cyl(rt, rb, h, color, x = 0, y = 0, z = 0, seg = 12) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), color instanceof THREE.Material ? color : mat(color));
   m.position.set(x, y, z);
   m.castShadow = true;

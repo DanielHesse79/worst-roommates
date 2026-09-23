@@ -50,7 +50,7 @@ export function dismissVisitors(g, why) {
 
 export function updateVisitors(g, gdt, min) {
   if (!g.visit) {
-    if (g.clock >= g.nextVisit && !g.over) spawn(g);
+    if (g.clock >= g.nextVisit && !g.over && !g.investigation) spawn(g);
     return;
   }
   const v = g.visit;

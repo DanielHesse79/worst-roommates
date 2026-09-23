@@ -28,6 +28,7 @@ export class View {
     this.cam = { target: new THREE.Vector3(GRID_W / 2 + 2, 0, GRID_H / 2 - 1), angle: Math.PI / 4, goal: Math.PI / 4, zoom: 1.0 };
     this.keys = new Set();
     this.wallsUp = false;
+    this.roofOn = false;
     this.wallH = CUT_H;
     this.simModels = new Map();
     this.tombs = new Map();
@@ -179,6 +180,7 @@ export class View {
       if (p.kind === 'door') return { kind: 'door', door: g.world.doors.find(d => d.id === p.id) };
       if (p.kind === 'pool') return { kind: 'pool' };
       if (p.kind === 'visitor') return g.visit ? { kind: 'visitor' } : null;
+      if (p.kind === 'responder') { const person = g.responders.find(r => r.id === p.id); if (person) return { kind: 'responder', person }; continue; }
       const cx = Math.floor(hit.point.x), cz = Math.floor(hit.point.z);
       if (g.world.inPool(cx, cz)) return { kind: 'pool' };
       if (g.world.inBounds(cx, cz)) return { kind: 'floor', cell: [cx, cz] };
@@ -268,14 +270,17 @@ export class View {
   }
 
   syncWalls(dt) {
-    const goal = this.wallsUp ? WALL_H : CUT_H;
+    // The roof sits on full-height walls.
+    const full = this.wallsUp || this.roofOn;
+    const goal = full ? WALL_H : CUT_H;
     this.wallH += (goal - this.wallH) * (1 - Math.exp(-dt * 10));
     for (const m of this.lot.walls) m.scale.y = this.wallH;
+    this.lot.roof.visible = this.roofOn && this.wallH > WALL_H - 0.05;
     for (const d of this.game.world.doors) {
       const v = this.lot.doors.get(d.id);
       v.brick.visible = d.bricked;
       v.sill.visible = !d.bricked;
-      v.lintel.visible = !d.bricked && this.wallsUp;
+      v.lintel.visible = !d.bricked && full;
     }
     for (const { cap, wall } of this.lot.caps) {
       cap.visible = wall.visible;

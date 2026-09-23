@@ -231,16 +231,22 @@ export class Sim {
     }
 
     const world = game.world;
-    if (!st.swimming && world.isBurning(this.cx, this.cz)) {
-      this.health -= 1.8 * min;
+    const inFlames = !st.swimming && world.isBurning(this.cx, this.cz);
+    if (inFlames) {
+      this.health -= 2.5 * min;
       if (this.health <= 0) return game.kill(this, 'Fire');
+      // Walking into the flames sets your clothes alight, and they keep burning after you leave.
+      if (st.onFire <= 0) game.log(`🔥 ${this.name} runs straight through the flames. Their clothes catch fire!`, 'evil');
+      st.onFire = Math.max(st.onFire, 45);
     }
     if (!st.swimming) {
       if (st.onFire > 0) {
         st.onFire -= min;
-        this.health -= 2.2 * min;
+        this.health -= 3 * min;
         if (this.health <= 0) return game.kill(this, 'Fire');
-        if (Math.random() < 0.03 * min) {
+        // A burning, panicking roommate spreads the fire wherever they run.
+        if (Math.random() < 0.04 * min && world.ignite(this.cx, this.cz)) game.log(`🔥 ${this.first} sets the ${world.roomAt(this.cx, this.cz)?.name || 'floor'} alight while running around on fire.`, 'evil');
+        if (!inFlames && Math.random() < 0.02 * min) {
           st.onFire = 0;
           game.log(`${this.first} finally remembers to stop, drop and roll.`, 'dim');
         }
@@ -405,6 +411,7 @@ export class Sim {
     this.place(e[0], e[1]);
     this.status.swimming = true;
     this.status.stuck = false;
+    this.status.onFire = 0;
     this.swimGoal = null;
   }
 

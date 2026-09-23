@@ -2,6 +2,7 @@
 // Def shape: { id, label, icon, evil?, duration (min | fn), spot(sim,target,game) -> [x,z],
 //   approachSim?, available?, start?, tick?(s,t,g,a,min), finish?, facePos? }
 import { triggerFireworks, openMail, fartCloud } from './traps.js';
+import { responderSpot } from './emergency.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -525,6 +526,36 @@ export const VISITOR_ACTIONS = [
     } },
 ];
 
+// Talking to the emergency services. Any conversation keeps the responder rooted to the spot.
+const nearResponder = { spot: (s, t, g) => responderSpot(g, t), facePos: (s, t) => [t.x, t.z] };
+const hold = (s, t) => { t.pause = Math.max(t.pause, 0.5); };
+const searching = (s, t, g) => !!g.investigation && g.investigation.detective === t && g.investigation.state === 'searching';
+export const RESPONDER_ACTIONS = [
+  { id: 'flirtfire', label: 'Flirt with the firefighter', icon: '😍', evil: true, duration: 30, ...nearResponder, kinds: ['firefighter'],
+    tick(s, t, g, a, m) { hold(s, t); s.addNeed('social', 1 * m); s.addNeed('fun', 0.6 * m); },
+    finish(s, t, g) { g.log(`😍 ${s.first} keeps ${t.title} chatting about his charity calendar while the house burns behind him.`, 'evil'); } },
+  { id: 'coffee', label: 'Offer him a coffee', icon: '☕', duration: 10, ...nearResponder, kinds: ['detective'], available: searching, tick: hold,
+    finish(s, t, g) { t.pause = 45; g.log(`☕ ${s.first} hands Inspector Gumshoe a coffee. He stops to enjoy it. That buys about 45 minutes.`, 'tool'); } },
+  { id: 'charmdet', label: 'Charm the inspector', icon: '😘', duration: 15, ...nearResponder, kinds: ['detective'], tick: hold,
+    available: (s, t, g) => searching(s, t, g) && s.canUse('lure'),
+    finish(s, t, g) {
+      if (s.rosterId === 'asraa') {
+        if (g.contract) g.suspicion = Math.max(0, g.suspicion - 30);
+        g.endInvestigation(`⚖️ Dr. Asraa Z reviews the inspector's warrant, finds eleven procedural errors and a typo, and walks him to his car. He apologises twice.${g.contract ? ' (-30 suspicion)' : ''}`);
+        return;
+      }
+      if (g.contract) g.suspicion = Math.max(0, g.suspicion - 10);
+      if (g.investigation) g.investigation.plan.shift();
+      g.log(`😘 ${s.first} flirts with Inspector Gumshoe until he forgets what he was about to check.${g.contract ? ' (-10 suspicion)' : ''}`, 'tool');
+    } },
+  { id: 'ramble', label: 'Tell him a very long story', icon: '🗣️', duration: 40, ...nearResponder, kinds: ['detective'], tick: hold,
+    available: (s, t, g) => searching(s, t, g) && s.rosterId === 'adam',
+    finish(s, t, g) { g.endInvestigation(`🗣️ Forty minutes into ${s.first}'s story about a dream he had in 2004, Inspector Gumshoe remembers an urgent appointment. Anywhere else.`); } },
+  { id: 'spoofradio', label: 'Spoof his police radio', icon: '📻', duration: 8, ...nearResponder, kinds: ['detective'], tick: hold,
+    available: (s, t, g) => searching(s, t, g) && s.rosterId === 'daniel',
+    finish(s, t, g) { g.endInvestigation(`📻 ${s.first} patches into the police radio: "All units, a cat is stuck up a tree across town." Inspector Gumshoe sprints for his car.`); } },
+];
+
 const tombSpot = (s, t, g) => s.adjacentTo({ cx: t.x, cz: t.z }, g.world);
 export const TOMB_ACTIONS = [
   { id: 'dance', label: 'Dance on the grave', icon: '💃', evil: true, duration: 30, spot: tombSpot,
@@ -539,7 +570,7 @@ export const TOMB_ACTIONS = [
 
 export const GOD_COST = {
   ladder: 20, brick: 30, gas: 25, wiring: 25, spoil: 30, rumor: 15, omen: 40,
-  bookshelf: 25, fireworks: 35, piranhas: 40, ghost: 30, chili: 20, letterbomb: 35,
+  bookshelf: 25, fireworks: 35, piranhas: 40, ghost: 30, chili: 20, letterbomb: 35, cleanup: 10,
 };
 
 const doorCells = d => (d.axis === 'x' ? [[d.at - 1, d.pos], [d.at, d.pos]] : [[d.pos, d.at - 1], [d.pos, d.at]]);
@@ -610,6 +641,44 @@ function godPowers(pick, g) {
   return out;
 }
 
+// The 🧹 tool: quietly undo your own handiwork before somebody official finds it.
+export function cleanupPower(pick, g) {
+  const w = g.world;
+  const power = (label, cells, run) => ({ key: 'cleanup', label, icon: '🧹', cells, run, cost: GOD_COST.cleanup });
+  if (pick.kind === 'floor') {
+    const t = w.trapAt(...pick.cell);
+    if (t) {
+      return power('Remove the hidden trap', [pick.cell], () => {
+        w.removeTrap(t);
+        g.log(t.type === 'wax' ? '🧹 The waxed floor is scuffed back to boring, safe dullness.' : '🧹 The bear trap is pulled out of the lawn and tossed over the fence.', 'tool');
+      });
+    }
+  }
+  if ((pick.kind === 'pool' || (pick.kind === 'object' && pick.obj.type === 'ladder')) && w.piranhas) {
+    return power('Net the piranhas', [w.ladder.use], () => {
+      w.piranhas = false; w.piranhasKnown = false;
+      g.log("🧹 The piranhas are netted and released into the neighbour's koi pond. Not your problem any more.", 'tool');
+    });
+  }
+  if (pick.kind === 'door' && pick.door.bricked && !pick.door.hackLocked) {
+    const d = pick.door;
+    return power('Knock the wall back out', doorCells(d), () => g.toggleDoor(d.id));
+  }
+  if (pick.kind !== 'object') return null;
+  const o = pick.obj, fixes = [];
+  if (o.sabotaged) fixes.push(() => { o.sabotaged = false; });
+  if (o.poisoned > 0) fixes.push(() => { o.poisoned = 0; o.untraceable = false; });
+  if (o.chili > 0) fixes.push(() => { o.chili = 0; });
+  if (o.fireworks) fixes.push(() => { o.fireworks = false; });
+  if (o.bomb) fixes.push(() => { o.bomb = false; o.flagUp = false; });
+  if (o.wobbly && !o.toppled) fixes.push(() => { o.wobbly = false; });
+  if (!fixes.length) return null;
+  return power(`Wipe down the ${o.name}`, objCells(o), () => {
+    fixes.forEach(f => f());
+    g.log(`🧹 The ${o.name} is wiped clean of fingerprints, residue and intent.`, 'tool');
+  });
+}
+
 export function findPower(pick, game, key) {
   return godPowers(pick, game).find(p => p.key === key) || null;
 }
@@ -646,6 +715,9 @@ export function menuFor(pick, sim, game) {
       break;
     case 'visitor':
       if (game.visit && game.visit.state !== 'leave') VISITOR_ACTIONS.filter(d => d.kinds.includes(game.visit.kind)).forEach(d => add(d, game.visit));
+      break;
+    case 'responder':
+      RESPONDER_ACTIONS.filter(d => d.kinds.includes(pick.person.kind)).forEach(d => add(d, pick.person));
       break;
   }
 

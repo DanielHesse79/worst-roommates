@@ -33,6 +33,8 @@ const RECIPES = {
   fright: [{ n: 8, colors: [0xc9b8ff, 0xffffff], speed: [0.2, 0.6], up: [0.8, 1.5], g: 0.2, life: [0.8, 1.4], size: [0.2, 0.35], grow: 0.6, additive: true }],
   smoke: [{ n: 1, colors: [0x3a3a3a, 0x555555], speed: [0.05, 0.25], up: [0.6, 1.1], g: 0.1, life: [1.8, 3], size: [0.35, 0.6], grow: 1.1 }],
   gas: [{ n: 16, colors: [0x9ad84a, 0xb8e05a, 0x7ab83a], speed: [0.3, 1.0], up: [0.1, 0.5], g: 0.05, life: [1.4, 2.4], size: [0.4, 0.7], grow: 1.3 }],
+  plume: [{ n: 1, colors: [0x262626, 0x3d3d3d, 0x505050], speed: [0.05, 0.3], up: [0.9, 1.5], g: 0.15, life: [2.5, 4], size: [0.6, 1.0], grow: 1.6 }],
+  steam: [{ n: 7, colors: [0xf2f2f2, 0xd6dde2], speed: [0.1, 0.5], up: [0.7, 1.4], g: 0.2, life: [0.9, 1.6], size: [0.3, 0.55], grow: 1.3 }],
   bubbles: [{ n: 1, colors: [0x6aff6a, 0xaaff55], speed: [0.05, 0.2], up: [0.4, 0.8], g: 0, life: [0.8, 1.3], size: [0.06, 0.12], grow: 0.1 }],
 };
 
@@ -68,6 +70,18 @@ export class Effects {
     }
   }
 
+  // One droplet of a hose jet, lobbed from the nozzle so it lands on the target cell.
+  jet(x0, y0, z0, x1, z1) {
+    if (this.particles.length >= MAX_PARTICLES) this.kill(this.particles.shift());
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, color: Math.random() < 0.5 ? 0xbfe8ff : 0xffffff, transparent: true, depthWrite: false }));
+    const size = rand(0.13, 0.22), t = 0.4, g = -7;
+    s.scale.setScalar(size);
+    s.position.set(x0, y0, z0);
+    this.scene.add(s);
+    const vx = (x1 - x0) / t + rand(-0.4, 0.4), vz = (z1 - z0) / t + rand(-0.4, 0.4);
+    this.particles.push({ s, vx, vy: (0.3 - y0) / t - 0.5 * g * t, vz, g, life: t, max: t, size, grow: 0 });
+  }
+
   kill(p) { this.scene.remove(p.s); p.s.material.dispose(); }
 
   update(dt, time) {
@@ -88,7 +102,13 @@ export class Effects {
     this.smokeAcc += dt;
     if (this.smokeAcc > 0.12) {
       this.smokeAcc = 0;
-      for (const f of w.fire.values()) if (Math.random() < 0.5) this.burst(f.x + 0.5, f.z + 0.5, 'smoke', 0.9);
+      // With the roof on, the smoke pours out of the roof (and the chimney, when the fire's lit).
+      const roof = g.view && g.view.roofOn ? g.view.lot.roof.userData : null;
+      for (const f of w.fire.values()) {
+        if (Math.random() < 0.5) this.burst(f.x + 0.5, f.z + 0.5, roof ? 'plume' : 'smoke', roof ? roof.heightAt(f.z + 0.5) : 0.9);
+      }
+      const fp = w.objects.get('fireplace');
+      if (roof && fp.lit > 0 && Math.random() < 0.4) this.burst(roof.chimney[0], roof.chimney[2], 'smoke', roof.chimney[1]);
       for (const s of g.sims) if (s.alive && s.status.poisoned > 0 && Math.random() < 0.4) this.burst(s.x, s.z, 'bubbles', 1.5);
     }
 

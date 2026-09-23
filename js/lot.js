@@ -170,5 +170,60 @@ export function buildLot(scene, world) {
     out.hits.set(o.id, hit);
   }
   dressLot(scene, out);
+  out.roof = buildRoof();
+  scene.add(out.roof);
   return out;
+}
+
+function shingleTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#6b3b34';
+  g.fillRect(0, 0, 128, 128);
+  for (let row = 0; row < 8; row++) {
+    const y = row * 16, shift = row % 2 ? 8 : 0;
+    g.fillStyle = row % 2 ? '#5e332d' : '#74423a';
+    g.fillRect(0, y, 128, 14);
+    g.strokeStyle = '#43241f';
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(0, y + 15); g.lineTo(128, y + 15); g.stroke();
+    for (let x = shift; x < 128; x += 16) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 15); g.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// A gable roof over the house (x 1..16, z 1..11), hidden until the player turns it on.
+function buildRoof() {
+  const roof = new THREE.Group();
+  const x0 = 1, x1 = 16, z0 = 1, z1 = 11, over = 0.35, rise = 2.4;
+  const run = (z1 - z0) / 2 + over, len = Math.hypot(run, rise), tilt = Math.atan2(rise, run);
+  const ridgeZ = (z0 + z1) / 2, width = x1 - x0 + over * 2;
+  const tex = shingleTexture();
+  tex.repeat.set(width / 1.2, len / 1.2);
+  const tiles = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
+  for (const side of [-1, 1]) {
+    const slope = box(width, 0.12, len, tiles, (x0 + x1) / 2, WALL_H + rise / 2, ridgeZ + side * run / 2);
+    slope.rotation.x = side * tilt;
+    roof.add(slope);
+  }
+  roof.add(box(width, 0.14, 0.2, 0x4a2a24, (x0 + x1) / 2, WALL_H + rise + 0.02, ridgeZ));
+  const gable = new THREE.Shape([new THREE.Vector2(-run + over, 0), new THREE.Vector2(run - over, 0), new THREE.Vector2(0, rise)]);
+  for (const x of [x0, x1]) {
+    const end = new THREE.Mesh(new THREE.ShapeGeometry(gable), mat(0xe6d9c3, { side: THREE.DoubleSide }));
+    end.rotation.y = Math.PI / 2;
+    end.position.set(x, WALL_H, ridgeZ);
+    end.castShadow = true;
+    roof.add(end);
+  }
+  roof.add(box(0.6, 2.2, 0.6, 0x8a8580, 12.5, WALL_H + 1.1, 2.3));
+  roof.add(box(0.72, 0.12, 0.72, 0x6d6862, 12.5, WALL_H + 2.2, 2.3));
+  roof.userData.chimney = [12.5, WALL_H + 2.35, 2.3];
+  roof.userData.heightAt = z => WALL_H + rise * Math.max(0, 1 - Math.abs(z - ridgeZ) / (run - over)) + 0.6;
+  roof.traverse(o => { o.raycast = () => {}; });
+  roof.visible = false;
+  return roof;
 }

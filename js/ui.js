@@ -4,6 +4,9 @@ import { TRAPS, TRAP_COST } from './traps.js';
 import { CONTRACTS, CAUSE_VERB, describeObjective, describeBonus, objectiveState, bonusMet, isUnlocked } from './contracts.js';
 import { SHOP } from './shop.js';
 
+const CLEANUP = { id: 'cleanup', name: 'Clean up evidence', icon: '🧹', target: 'evidence',
+  desc: 'Remove a trap or tampering you set up earlier, before a detective finds it. Can still be witnessed.' };
+
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
 const hex = c => '#' + c.toString(16).padStart(6, '0');
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -22,6 +25,7 @@ export class UI {
     document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => g.setSpeed(Number(b.dataset.speed))));
     this.$('freeWillBtn').addEventListener('click', () => { g.freeWill = !g.freeWill; this.refresh(); });
     this.$('wallsBtn').addEventListener('click', () => { g.view.wallsUp = !g.view.wallsUp; this.refresh(); });
+    this.$('roofBtn').addEventListener('click', () => { g.view.roofOn = !g.view.roofOn; this.refresh(); });
     this.$('rotL').addEventListener('click', () => { g.view.cam.goal += Math.PI / 2; });
     this.$('rotR').addEventListener('click', () => { g.view.cam.goal -= Math.PI / 2; });
     this.$('boardBtn').addEventListener('click', () => { g.setSpeed(0); this.showBoard(); });
@@ -75,6 +79,7 @@ export class UI {
       if (!g.started) return;
       if (e.key === ' ') { e.preventDefault(); g.setSpeed(g.speed === 0 ? (g.lastSpeed || 1) : 0); }
       if (['1', '2', '3'].includes(e.key)) g.setSpeed(Number(e.key));
+      if (e.key === 'r' || e.key === 'R') { g.view.roofOn = !g.view.roofOn; this.refresh(); }
       if (e.key === 'Tab') {
         e.preventDefault();
         const alive = g.sims.filter(s => s.alive);
@@ -128,9 +133,10 @@ export class UI {
     g.armedTrap = id;
     const hint = this.$('trapHint');
     if (id) {
-      const t = TRAPS.find(tt => tt.id === id);
+      const t = [...TRAPS, CLEANUP].find(tt => tt.id === id);
       const objectTarget = { fireworks: 'the fireplace or grill', gas: 'the stove or grill', wiring: 'the TV or bathtub', spoil: 'the fridge', chili: 'the fridge', letterbomb: 'the mailbox', bookshelf: 'the bookshelf' };
-      const where = { indoor: 'an indoor floor tile', outdoor: 'a patch of lawn', pool: 'the pool', tomb: 'a gravestone', object: objectTarget[t.id] }[t.target];
+      const where = { indoor: 'an indoor floor tile', outdoor: 'a patch of lawn', pool: 'the pool', tomb: 'a gravestone', object: objectTarget[t.id],
+        evidence: 'a hidden trap, a tampered object, the pool or a bricked-up door' }[t.target];
       hint.textContent = `${t.icon} ${t.name}: click ${where}. Right-click or Esc to cancel.`;
       hint.classList.remove('hidden');
     } else {
@@ -151,7 +157,14 @@ export class UI {
       const broke = g.contract && g.malice < cost;
       return `<button data-trap="${t.id}" class="${g.armedTrap === t.id ? 'armed' : ''} ${broke ? 'broke' : ''}" title="${esc(t.name)} — ${esc(t.desc)}">
         <span class="ti">${t.icon}</span><span class="tc">${g.contract ? cost + '😈' : 'free'}</span></button>`;
-    }).join(''));
+    }).join('') + this.cleanupButton());
+  }
+
+  cleanupButton() {
+    const g = this.game, t = CLEANUP, cost = this.trapCost(t.id);
+    const broke = g.contract && g.malice < cost;
+    return `<span class="barLabel">Evidence</span><button data-trap="${t.id}" class="${g.armedTrap === t.id ? 'armed' : ''} ${broke ? 'broke' : ''}" title="${esc(t.name)} — ${esc(t.desc)}">
+        <span class="ti">${t.icon}</span><span class="tc">${g.contract ? cost + '😈' : 'free'}</span></button>`;
   }
 
   onWorldClick(pick, x, y) {
@@ -162,7 +175,7 @@ export class UI {
       const cost = this.trapCost(g.armedTrap);
       if (g.contract && g.malice < cost) { this.toast(`Not enough malice (${cost} needed)`); return; }
       if (g.placeTrap(g.armedTrap, pick)) this.armTrap(null);
-      else this.toast("That trap can't go there");
+      else this.toast(g.armedTrap === 'cleanup' ? 'Nothing to clean up there' : "That trap can't go there");
       this.refresh();
       return;
     }
@@ -172,7 +185,8 @@ export class UI {
     if (pick.kind === 'floor') { items.forEach(i => i.run()); this.refresh(); return; }
     if (pick.kind === 'sim') items.unshift({ label: `Select ${pick.sim.first}`, icon: '👆', run: () => this.select(pick.sim) });
     const title = pick.kind === 'object' ? pick.obj.name : pick.kind === 'sim' ? pick.sim.name : pick.kind === 'tomb' ? `R.I.P. ${pick.tomb.name} — "${pick.tomb.epitaph || 'Gone.'}"`
-      : pick.kind === 'door' ? pick.door.name : pick.kind === 'visitor' ? `${g.visit.type.icon} ${g.visit.type.name} at the door` : 'Swimming Pool';
+      : pick.kind === 'door' ? pick.door.name : pick.kind === 'visitor' ? `${g.visit.type.icon} ${g.visit.type.name} at the door`
+      : pick.kind === 'responder' ? `${pick.person.kind === 'detective' ? '🕵️' : '🧯'} ${pick.person.title}` : 'Swimming Pool';
     if (!items.length) items.push({ label: g.selected ? `${g.selected.first} can't do anything here` : 'Select a sim first', icon: '🤷', run: () => {} });
     this.showPie(items, x, y, title);
   }
@@ -239,6 +253,7 @@ export class UI {
     this.$('freeWillBtn').textContent = `Free will: ${g.freeWill ? 'ON' : 'OFF'}`;
     this.$('freeWillBtn').classList.toggle('active', g.freeWill);
     this.$('wallsBtn').textContent = g.view.wallsUp ? 'Walls: Up' : 'Walls: Cut';
+    this.$('roofBtn').classList.toggle('active', g.view.roofOn);
     this.$('muteBtn').textContent = g.audio.muted ? '🔇' : '🔊';
     this.$('muteBtn').setAttribute('aria-label', g.audio.muted ? 'Unmute sound' : 'Mute sound');
     this.$('muteBtn').setAttribute('aria-pressed', String(g.audio.muted));

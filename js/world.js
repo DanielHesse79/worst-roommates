@@ -169,9 +169,17 @@ export class World {
     return this.isIndoor(x, z) || (obj && obj.type === 'grill');
   }
 
+  // Flames burn long enough to keep spreading until the fire brigade arrives.
   ignite(x, z) {
     if (!this.canBurn(x, z)) return false;
-    this.fire.set(cellKey(x, z), { x, z, life: 60 + Math.random() * 50, spread: 0 });
+    this.fire.set(cellKey(x, z), { x, z, life: 150 + Math.random() * 100, spread: 0 });
+    return true;
+  }
+
+  extinguish(x, z) {
+    const k = cellKey(x, z);
+    if (!this.fire.delete(k)) return false;
+    this.scorched.add(k);
     return true;
   }
 
@@ -200,10 +208,12 @@ export class World {
       if (obj) obj.charred = true;
       while (f.spread >= 6) {
         f.spread -= 6;
-        if (Math.random() < 0.2) {
+        if (Math.random() < 0.25) {
           const [dx, dz] = DIRS4[Math.floor(Math.random() * 4)];
           const nx = f.x + dx, nz = f.z + dz;
-          if (this.inBounds(nx, nz) && this.isIndoor(nx, nz) && !this.edgeBlocked(f.x, f.z, nx, nz) && this.canBurn(nx, nz)) {
+          // Cheap drywall: now and then the flames eat straight through a wall.
+          const through = !this.edgeBlocked(f.x, f.z, nx, nz) || Math.random() < 0.25;
+          if (this.inBounds(nx, nz) && this.isIndoor(nx, nz) && through && this.canBurn(nx, nz)) {
             newFires.push([nx, nz]);
           }
         }

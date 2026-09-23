@@ -6,11 +6,12 @@ import { runAutonomy } from './autonomy.js';
 import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS } from './data.js';
 import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress } from './contracts.js';
 import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, floorTrapPower, fartCloud } from './traps.js';
-import { findPower } from './interactions.js';
+import { findPower, cleanupPower } from './interactions.js';
 import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
 import { SHOP, LOCKED_TRAPS, contractReward } from './shop.js';
 import { updateVisitors, scheduleNextVisit, visitorsNear, dismissVisitors } from './visitors.js';
+import { updateEmergency, resetEmergency, requestInvestigation, endInvestigation, respondersNear } from './emergency.js';
 
 const SPEEDS = [0, 1, 3, 8];
 const START_SPOTS = [[9, 8], [11, 8], [10, 7], [12, 8], [8, 7], [13, 7]];
@@ -79,6 +80,7 @@ class Game {
     this.hackLockUntil = 0;
     this.visit = null;
     scheduleNextVisit(this);
+    resetEmergency(this);
     this.meteors = [];
     this.ghosts = [];
     this.armedTrap = null;
@@ -165,7 +167,7 @@ class Game {
   // ---------- Hand of Fate ----------
 
   // Awake, non-swimming sims in the same room (or both outdoors) within 7 cells of any of the cells,
-  // plus any visitors at the door (they peer through every window).
+  // plus any visitors at the door (they peer through every window) and emergency responders on the lot.
   witnesses(cells) {
     const w = this.world;
     const seen = this.sims.filter(s => {
@@ -175,11 +177,14 @@ class Game {
       const room = w.roomAt(s.cx, s.cz);
       return cells.some(([x, z]) => Math.max(Math.abs(x - s.cx), Math.abs(z - s.cz)) <= 7 && w.roomAt(x, z) === room);
     });
-    for (const [x, z] of cells) for (const p of visitorsNear(this, x + 0.5, z + 0.5, 7)) if (!seen.includes(p)) seen.push(p);
+    for (const [x, z] of cells) {
+      for (const p of [...visitorsNear(this, x + 0.5, z + 0.5, 7), ...respondersNear(this, x + 0.5, z + 0.5, 7)]) if (!seen.includes(p)) seen.push(p);
+    }
     return seen;
   }
 
   dismissVisitors(why) { dismissVisitors(this, why); }
+  endInvestigation(msg) { return endInvestigation(this, msg); }
 
   godAction(p) {
     if (this.result) return;
@@ -209,6 +214,7 @@ class Game {
     this.suspicion = Math.min(100, this.suspicion + v);
     this.peakSuspicion = Math.max(this.peakSuspicion, this.suspicion);
     if (msg) this.log(msg, 'warn');
+    if (this.suspicion >= 60) requestInvestigation(this, 'all the rumours about this house');
     if (!this.warned && this.suspicion >= 50) {
       this.warned = true;
       this.ui.toast('🚨 The neighbours are talking. Everyone is on their guard.');
@@ -229,6 +235,12 @@ class Game {
   // Place the trap armed in the palette on whatever was clicked. Returns false if it doesn't fit there.
   placeTrap(id, pick) {
     if (!pick) return false;
+    if (id === 'cleanup') {
+      const p = cleanupPower(pick, this);
+      if (!p) return false;
+      this.godAction(p);
+      return true;
+    }
     if (id === 'wax' || id === 'beartrap') {
       if (pick.kind !== 'floor' || !canPlaceFloorTrap(this, id, pick.cell[0], pick.cell[1])) return false;
       this.godAction(floorTrapPower(this, id, pick.cell[0], pick.cell[1]));
@@ -315,18 +327,20 @@ class Game {
     this.ui.toast(`${info.icon} ${sim.name} died: ${cause}${discovered ? ' — NEW death discovered!' : ''}`);
     if (this.selected === sim) this.selected = this.sims.find(s => s.alive) || null;
 
+    let sus = DEATH_SUSPICION[cause];
+    if (cause === 'Drowning' && !this.world.ladder.present) sus = 25;
+    if (cause === 'Starvation' && this.world.doors.some(d => d.bricked && !d.hackLocked)) sus = 30;
+    if (cause === 'Poison' && sim.status.untraceable) sus = 0;
+    // Anything that looks like murder, and every fatal fire, gets a detective sent round.
+    if (sus >= 10 || cause === 'Fire') requestInvestigation(this, `the death of ${sim.name}`);
     if (this.contract) {
       this.malice += 25;
-      let sus = DEATH_SUSPICION[cause];
-      if (cause === 'Drowning' && !this.world.ladder.present) sus = 25;
-      if (cause === 'Starvation' && this.world.doors.some(d => d.bricked)) sus = 30;
       if (cause === 'Poison' && sim.status.untraceable) {
-        sus = 0;
         this.log(`⚗️ The coroner consults an expert witness: Dr. Asraa Z. Her report says "natural causes". Case closed.`, 'tool');
       }
       this.addSuspicion(sus, sus >= 20 ? `🕵️ ${sim.first}'s death looks... suspicious. (+${sus} suspicion)` : null, true);
-      const onlookers = visitorsNear(this, sim.x, sim.z, 8);
-      if (onlookers.length) this.addSuspicion(15, `👀 ${onlookers.length > 1 ? 'The visitors' : onlookers[0].first} at the door saw the whole thing. (+15 suspicion)`, true);
+      const onlookers = [...visitorsNear(this, sim.x, sim.z, 8), ...respondersNear(this, sim.x, sim.z, 8)];
+      if (onlookers.length) this.addSuspicion(15, `👀 ${onlookers.length > 1 ? 'The onlookers' : onlookers[0].first} saw the whole thing. (+15 suspicion)`, true);
       this.checkContract();
       this.checkExposed();
     } else {
@@ -414,6 +428,7 @@ class Game {
     this.meteors = this.meteors.filter(m => m.t < m.dur);
     updateGhosts(this, gdt, min);
     updateVisitors(this, gdt, min);
+    updateEmergency(this, gdt, min);
     if (this.hackLockUntil && this.clock > this.hackLockUntil) {
       this.hackLockUntil = 0;
       for (const d of this.world.doors) if (d.hackLocked) { d.bricked = false; d.hackLocked = false; }
