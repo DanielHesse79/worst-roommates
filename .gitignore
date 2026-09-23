@@ -1,0 +1,7 @@
+# Local tool settings
+.claude/settings.local.json
+
+# Dependencies and OS clutter
+node_modules/
+.DS_Store
+Thumbs.db

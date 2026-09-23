@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Worst Roommates</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="polish.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="overlay"></div>
+
+  <header id="topbar">
+    <div class="brand"><span class="brandIcon">☠</span> WORST <em>ROOMMATES</em></div>
+    <span id="clock"></span>
+    <span id="score"></span>
+    <span id="malice" title="Malice pays for Hand of Fate powers. Earned over time and from every death."></span>
+    <span id="money" title="Blood money: earned from contracts, spent on the black market."></span>
+    <div class="group">
+      <button data-speed="0" title="Pause (Space)">⏸</button>
+      <button data-speed="1" title="Normal (1)">▶</button>
+      <button data-speed="2" title="Fast (2)">▶▶</button>
+      <button data-speed="3" title="Ultra (3)">▶▶▶</button>
+    </div>
+    <div class="group">
+      <button id="freeWillBtn" title="Let sims act on their own when idle"></button>
+      <button id="wallsBtn" title="Toggle wall height"></button>
+      <button id="rotL" title="Rotate (Q)">⟲</button>
+      <button id="rotR" title="Rotate (E)">⟳</button>
+      <button id="muteBtn" title="Sound on/off"></button>
+      <details id="soundSettings">
+        <summary title="Sound and dialogue settings" aria-label="Sound and dialogue settings">⚙</summary>
+        <div class="settingsPanel">
+          <strong>Set the mood</strong>
+          <label for="volume">Volume <output id="volumeValue">55%</output></label>
+          <input id="volume" type="range" min="0" max="100" step="5" value="55">
+          <label class="checkRow"><input id="ambience" type="checkbox" checked> Neighbourhood ambience</label>
+          <label class="checkRow"><input id="dialogue" type="checkbox" checked> Roommate speech bubbles</label>
+          <small>Birds outside. Bad decisions inside.</small>
+        </div>
+      </details>
+      <button id="journalBtn" title="Show or hide the incident journal" aria-label="Show or hide the incident journal">☰</button>
+      <button id="boardBtn" title="Contracts board">📋</button>
+    </div>
+  </header>
+
+  <div id="portraits"></div>
+  <div id="queue"></div>
+  <section id="simPanel"></section>
+
+  <aside id="sidebar">
+    <div id="contractHud"></div>
+    <div class="sideTitle">The unfortunate collection</div>
+    <div id="deaths"></div>
+    <div class="sideTitle journalTitle"><span class="liveDot"></span> Incident journal</div>
+    <div id="log"></div>
+  </aside>
+
+  <div id="trapBar"></div>
+  <div id="trapHint" class="hidden"></div>
+
+  <div id="pie" class="hidden"></div>
+  <div id="toast"></div>
+
+  <div id="board" class="modal hidden">
+    <div class="modalBox wide">
+      <div class="boardHero">
+        <div class="eyebrow">A suburban disaster simulator</div>
+        <h1>Worst<br><em>Roommates.</em></h1>
+        <p>Shared house. Private grudges.<br><b>Make it look like an accident.</b></p>
+        <div class="heroStamp" aria-hidden="true">HOME<br>SWEET<br><s>HOME</s><br><em>ALIBI.</em></div>
+        <div class="heroFoot"><span>YOUR NEXT BAD IDEA STARTS HERE</span><span>Est. 6 feet under ↘</span></div>
+      </div>
+      <div id="contractList"></div>
+      <details id="howTo">
+        <summary>How to play</summary>
+        <ul>
+          <li>Every contract names its <b>targets 🎯</b>. You choose which of <b>your crew 🤝</b> moves in with them — each has a toxic personality and tactics (gaslighting, triangulation, guilt-trips...). Your crew must survive.</li>
+          <li><b>Select a sim</b> (click them or their portrait), then <b>click objects, other sims or graves</b> to give orders. Your orders override what they'd do on their own.</li>
+          <li><b>Listen in:</b> speech bubbles react to personalities and household disasters. Leave a passive-aggressive note for a smaller, pettier crisis. Adjust volume, ambience and bubbles with <b>⚙</b>.</li>
+          <li>Hide <b>traps</b> from the bar at the bottom. Contracts pay <b>💰 blood money</b> — spend it on the <b>black market</b> for new traps, recruits and upgrades.</li>
+          <li>Risky-but-normal actions cause <i>accidents</i>: a clumsy sim cooking, a novice fixing wiring, a bath with the radio on the edge.</li>
+          <li><span class="godTag">Hand of Fate</span> powers cost <b>😈 Malice</b>: loosen gas valves, fray wiring, spoil food, remove the pool ladder, brick up doors, whisper rumours. You earn Malice over time and from every death.</li>
+          <li><b>Suspicion</b> rises when sims <b>witness</b> your powers, and when deaths look like murder (poison, drowning with no ladder, starving behind a brick wall). At 50 everyone gets careful. At 100 you're exposed and the contract fails. It slowly fades over time.</li>
+          <li>Each contract has a deadline, a target, a required cause of death, and people who must survive. Bonus goals earn up to ★★★.</li>
+        </ul>
+        <p class="keys">Drag / WASD: pan · Wheel: zoom · Q/E: rotate · Space: pause · 1-3: speed · Tab: next sim</p>
+      </details>
+    </div>
+  </div>
+
+  <div id="crew" class="modal hidden">
+    <div class="modalBox wide">
+      <div id="crewBody"></div>
+      <div class="btnRow">
+        <button id="crewBack" class="secondary">← Contracts</button>
+        <button id="crewGo">Move in →</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="result" class="modal hidden">
+    <div class="modalBox">
+      <h1 id="resultTitle"></h1>
+      <div id="resultBody"></div>
+      <div class="btnRow">
+        <button id="retryBtn" class="secondary">↻ Retry</button>
+        <button id="toBoardBtn" class="secondary">📋 Contracts</button>
+        <button id="nextBtn">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

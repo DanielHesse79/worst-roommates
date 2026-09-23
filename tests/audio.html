@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Worst Roommates — audio checks</title>
+<style>body{font:15px system-ui;background:#212431;color:#f5efdc;max-width:850px;margin:40px auto;padding:20px}table{border-collapse:collapse;width:100%}td,th{padding:8px;text-align:left;border-bottom:1px solid #555}h1{color:#dfeaa0}.fail{color:#ff9999}</style>
+<h1>Audio signal checks</h1>
+<p>Silent, offline renders using the same mixer as the game, at maximum volume. No saved settings are changed.</p>
+<p id="status">Rendering…</p>
+<table><thead><tr><th>Sound</th><th>Peak amplitude</th><th>RMS</th><th>Result</th></tr></thead><tbody id="results"></tbody></table>
+<script type="module">
+import { Sfx, SOUNDS } from '../js/audio.js';
+const recipes = Object.entries(SOUNDS).filter(([name]) => name !== 'blah');
+recipes.push(['voice', (a, t) => a.syllables(3, 'schemer', 55, t)]);
+recipes.push(['panicked voice', (a, t) => a.syllables(1, 'alarm', 60, t)]);
+recipes.push(['stacked chaos', (a, t) => {
+  SOUNDS.explosion(a, t); SOUNDS.death(a, t); SOUNDS.zap(a, t);
+  a.syllables(2, 'alarm', 60, t);
+}]);
+let failed = 0;
+for (const [name, render] of recipes) {
+  try {
+    const ctx = new OfflineAudioContext(2, 44100 * 4, 44100);
+    const a = Object.create(Sfx.prototype);
+    Object.assign(a, { volume: 1, muted: false, last: {} });
+    a.createGraph(ctx);
+    render(a, 0.05);
+    const buf = await ctx.startRendering();
+    let peak = 0, sum = 0, finite = true;
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      for (const sample of buf.getChannelData(c)) {
+        finite &&= Number.isFinite(sample); peak = Math.max(peak, Math.abs(sample)); sum += sample * sample;
+      }
+    }
+    const rms = Math.sqrt(sum / (buf.length * buf.numberOfChannels));
+    const pass = finite && peak > 0.0001 && peak < 0.99 && rms > 0.00001;
+    if (!pass) failed++;
+    const row = document.createElement('tr');
+    for (const value of [name, peak.toFixed(4), rms.toFixed(4), pass ? 'PASS' : 'FAIL']) {
+      const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+    }
+    if (!pass) row.className = 'fail';
+    document.getElementById('results').append(row);
+  } catch (error) {
+    failed++;
+    const row = document.createElement('tr'); row.className = 'fail';
+    const cell = document.createElement('td'); cell.colSpan = 4; cell.textContent = `${name}: ${error.message}`;
+    row.append(cell); document.getElementById('results').append(row);
+  }
+}
+document.getElementById('status').textContent = `${recipes.length - failed}/${recipes.length} passed. ${failed} failed.`;
+</script>
+</html>

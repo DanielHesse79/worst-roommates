@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suicidal Sims</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <h1>💀 Suicidal Sims</h1>
+      <div id="statline">
+        <span id="householdLabel">Household #1</span>
+        <span id="scoreLabel">Score: 0</span>
+        <span id="maliceLabel">😈 Malice: 50</span>
+      </div>
+      <div id="speedControls">
+        <button data-speed="0" class="speedBtn">⏸</button>
+        <button data-speed="1" class="speedBtn active">▶</button>
+        <button data-speed="2" class="speedBtn">▶▶</button>
+        <button data-speed="4" class="speedBtn">▶▶▶</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <div id="canvasWrap">
+        <canvas id="stage" width="672" height="480"></canvas>
+      </div>
+
+      <aside id="sidebar">
+        <section id="livingPanel">
+          <h2>The Household</h2>
+          <div id="simList"></div>
+        </section>
+        <section id="graveyardPanel">
+          <h2>⚰ Graveyard</h2>
+          <div id="graveList"></div>
+        </section>
+      </aside>
+    </main>
+
+    <section id="toolbar">
+      <button class="toolBtn" data-tool="ladder" title="Pull the pool ladder">
+        <span class="toolIcon">🪜</span><span class="toolName">Pull Ladder</span><span class="toolCost">10</span>
+      </button>
+      <button class="toolBtn" data-tool="fire" title="Click a kitchen/living room tile to ignite it">
+        <span class="toolIcon">🔥</span><span class="toolName">Start Fire</span><span class="toolCost">20</span>
+      </button>
+      <button class="toolBtn" data-tool="poison" title="Poison the fridge">
+        <span class="toolIcon">🧪</span><span class="toolName">Poison Fridge</span><span class="toolCost">15</span>
+      </button>
+      <button class="toolBtn" data-tool="rig" title="Click an appliance to rig it">
+        <span class="toolIcon">⚡</span><span class="toolName">Rig Appliance</span><span class="toolCost">15</span>
+      </button>
+      <button class="toolBtn" data-tool="rumor" title="Click a sim to whisper a vicious rumor about them">
+        <span class="toolIcon">🗣</span><span class="toolName">Whisper Rumor</span><span class="toolCost">10</span>
+      </button>
+      <button class="toolBtn" data-tool="meteor" title="Click a sim to drop a meteor on them">
+        <span class="toolIcon">☄</span><span class="toolName">Meteor Strike</span><span class="toolCost">60</span>
+      </button>
+    </section>
+
+    <section id="logPanel">
+      <h2>Chronicle of Misdeeds</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+
+  <div id="introModal" class="modal">
+    <div class="modalBox">
+      <h2>💀 Suicidal Sims</h2>
+      <p>Welcome, dark overseer. This household is rotten to the core &mdash; every sim inside is
+      wicked, spiteful, and left entirely to their own devices. Your job is simple:</p>
+      <p class="goal">Make sure every last one of them dies. Creatively.</p>
+      <p>They'll insult each other, start fights, and scheme all on their own &mdash; but sometimes
+      evil needs a helping hand. Use your godly tools below to pull the pool ladder, rig the wiring,
+      poison the fridge, or just drop a meteor on someone's head.</p>
+      <button id="startBtn">Begin the Reckoning</button>
+    </div>
+  </div>
+
+  <div id="recapModal" class="modal hidden">
+    <div class="modalBox">
+      <h2 id="recapTitle">Household Eliminated</h2>
+      <div id="recapList"></div>
+      <p id="recapScore"></p>
+      <button id="nextBtn">Summon the Next Household</button>
+    </div>
+  </div>
+
+  <script src="js/world.js"></script>
+  <script src="js/sim.js"></script>
+  <script src="js/tools.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

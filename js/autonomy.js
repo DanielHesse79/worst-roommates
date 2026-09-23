@@ -1,0 +1,150 @@
+// Free will: what an idle sim decides to do when the player isn't directing them.
+import { OBJECT_ACTIONS, SIM_ACTIONS, TOMB_ACTIONS, SWIM, FIGHT, WALK } from './interactions.js';
+import { PERSONALITIES } from './data.js';
+
+const objAct = (type, id) => OBJECT_ACTIONS[type].find(d => d.id === id);
+const simAct = id => SIM_ACTIONS.find(d => d.id === id);
+const shuffle = arr => arr.sort(() => Math.random() - 0.5);
+
+function reachable(s, def, target, g) {
+  let spot;
+  if (def.approachSim) spot = s.adjacentTo(target, g.world);
+  else spot = def.spot ? def.spot(s, target, g) : [s.cx, s.cz];
+  return !!spot && g.world.findPath(s.cx, s.cz, spot[0], spot[1]) !== null;
+}
+
+function viable(s, g, def, target) {
+  if (!def || !target) return false;
+  if (def.available && !def.available(s, target, g)) return false;
+  return reachable(s, def, target, g);
+}
+
+function weightedPick(opts) {
+  const total = opts.reduce((a, o) => a + o.w, 0);
+  let r = Math.random() * total;
+  for (const o of opts) { if ((r -= o.w) < 0) return o; }
+  return opts[opts.length - 1];
+}
+
+function pickEvil(s, g) {
+  const chance = 0.1 + (s.evil - 50) / 300 + (s.has('hotheaded') ? 0.08 : 0) + (s.mood() < 35 ? 0.08 : 0);
+  if (Math.random() > chance) return null;
+  const o = id => g.world.objects.get(id);
+  const opts = [];
+  for (const other of g.sims) {
+    if (!other.alive || other === s || other.status.swimming) continue;
+    const r = s.relWith(other);
+    if (r < 10) opts.push({ w: 3, def: simAct('insult'), target: other });
+    if (r < (s.has('hotheaded') ? -30 : -60)) opts.push({ w: 1.2, def: FIGHT, target: other });
+    if (r < -40) opts.push({ w: 0.6, def: simAct('drink'), target: other });
+  }
+  opts.push({ w: 0.3, def: objAct('fridge', 'poison'), target: o('fridge') });
+  opts.push({ w: 0.5, def: objAct('computer', 'darkarts'), target: o('computer') });
+  if (s.has('pyro')) {
+    opts.push({ w: 1.5, def: objAct('fireplace', 'light'), target: o('fireplace') });
+    opts.push({ w: 0.4, def: objAct('fireplace', 'stoke'), target: o('fireplace') });
+    opts.push({ w: 0.4, def: objAct('heater', 'crank'), target: o('heater') });
+  }
+  if (s.has('stargazer')) opts.push({ w: 0.6, def: objAct('telescope', 'taunt'), target: o('telescope') });
+
+  // Personality tactics: manipulation is their favourite hobby.
+  const victims = g.sims.filter(x => x.alive && x !== s && !x.status.swimming && (s.role !== 'crew' || x.role === 'target'));
+  for (const id of PERSONALITIES[s.personality].tactics) {
+    const def = simAct(id);
+    if (!victims.length || !def) continue;
+    let target;
+    if (id === 'lovebomb') target = victims.filter(v => !v.lovebomb).sort((a, b) => s.relWith(b) - s.relWith(a))[0];
+    else if (id === 'story') target = victims.find(v => v.needs.fun < 50);
+    else target = victims[Math.floor(Math.random() * victims.length)];
+    if (target) opts.push({ w: id === 'story' ? 0.5 : 1.3, def, target });
+  }
+  for (const t of g.world.tombstones) opts.push({ w: 2, def: TOMB_ACTIONS[0], target: t });
+
+  const ok = opts.filter(x => viable(s, g, x.def, x.target));
+  return ok.length ? weightedPick(ok) : null;
+}
+
+function pickNeed(s, g) {
+  const n = s.needs;
+  const o = id => g.world.objects.get(id);
+  const wants = [
+    ['hunger', 50], ['energy', 35], ['hygiene', 40], ['social', 45], ['fun', 55],
+  ].filter(([k, th]) => n[k] < th).sort((a, b) => n[a[0]] - n[b[0]]);
+
+  for (const [need] of wants) {
+    let cands = [];
+    if (need === 'hunger') {
+      const fridge = o('fridge');
+      const selfPoisoned = fridge.poisoned && fridge.poisonedBy === s.id && !s.has('glutton');
+      const cook = [[objAct('stove', 'cook'), o('stove')], [objAct('grill', 'grill'), o('grill')]];
+      const snack = selfPoisoned ? [] : [[objAct('fridge', 'snack'), fridge]];
+      // Mostly the safe option; the player has to push them toward the stove.
+      cands = Math.random() < 0.8 ? [...snack, ...shuffle(cook)] : [...shuffle(cook), ...snack];
+      cands.push([objAct('computer', 'pizza'), o('computer')]);
+    } else if (need === 'energy') {
+      cands = [...g.world.objects.values()].filter(b => b.type === 'bed')
+        .sort((a, b) => (a.id === s.bedId ? -1 : b.id === s.bedId ? 1 : Math.hypot(a.use[0] - s.x, a.use[1] - s.z) - Math.hypot(b.use[0] - s.x, b.use[1] - s.z)))
+        .map(b => [objAct('bed', 'sleep'), b]);
+    } else if (need === 'hygiene') {
+      cands = [[objAct('tub', 'bath'), o('tub')]];
+    } else if (need === 'social') {
+      const others = g.sims.filter(x => x.alive && x !== s && !x.status.swimming)
+        .sort((a, b) => s.relWith(b) - s.relWith(a));
+      for (const x of others) cands.push([s.relWith(x) < -30 && Math.random() < 0.4 ? simAct('insult') : simAct('chat'), x]);
+    } else if (need === 'fun') {
+      cands = shuffle([
+        [objAct('tv', 'watch'), o('tv')],
+        [objAct('telescope', 'stargaze'), o('telescope')],
+        [objAct('computer', 'scheme'), o('computer')],
+        ...(n.energy > 45 && !g.world.piranhasKnown ? [[SWIM, g.world.ladder]] : []),
+        [objAct('bookshelf', 'read'), o('bookshelf')],
+        [objAct('mailbox', 'mail'), o('mailbox')],
+        [objAct('fireplace', 'warm'), o('fireplace')],
+        [objAct('heater', 'warmhands'), o('heater')],
+      ]);
+      if (s.has('stargazer')) cands.unshift([objAct('telescope', 'stargaze'), o('telescope')]);
+      if (s.rosterId === 'daniel') cands.unshift([objAct('computer', 'devgame'), o('computer')]);
+    }
+    for (const [def, target] of cands) if (viable(s, g, def, target)) return { def, target };
+  }
+  return null;
+}
+
+// A raised mailbox flag is irresistible.
+function pickCurious(s, g) {
+  const box = g.world.objects.get('mailbox');
+  if (!box.flagUp || Math.random() > 0.3) return null;
+  if (s.has('paranoid') && !s.confused) return null; // a raised flag is exactly what a paranoid sim distrusts
+  const def = objAct('mailbox', 'mail');
+  return viable(s, g, def, box) ? { def, target: box } : null;
+}
+
+function pickWander(s, g) {
+  if (s.rosterId === 'daniel') {
+    const pc = g.world.objects.get('computer'), def = objAct('computer', 'devgame');
+    if (viable(s, g, def, pc)) return { def, target: pc };
+  }
+  if (Math.random() > 0.3) return null;
+  const cell = g.world.randomNear(s.cx, s.cz, 3);
+  return cell ? { def: WALK, target: { cell } } : null;
+}
+
+const FOOD = new Set(['snack', 'cook', 'grill', 'pizza']);
+
+export function runAutonomy(s, g, min) {
+  if (!s.alive) return;
+  // A growling stomach interrupts whatever they were doing on their own.
+  if (s.action && s.action.source === 'auto' && s.needs.hunger < 12 && !FOOD.has(s.action.def.id) && !s.status.swimming) {
+    s.endAction();
+    s.idle = 8;
+  }
+  if (s.action || s.queue.length) return;
+  const st = s.status;
+  if (st.swimming || st.passedOut > 0 || st.engaged > 0 || st.panic > 0 || st.trapped > 0) return;
+  s.idle = (s.idle || 0) + min;
+  if (s.idle < 8) return;
+  s.idle = 0;
+  const starving = s.needs.hunger < 20;
+  const choice = (!starving && pickCurious(s, g)) || (!starving && pickEvil(s, g)) || pickNeed(s, g) || pickWander(s, g);
+  if (choice) s.enqueue(choice.def, choice.target, 'auto');
+}
