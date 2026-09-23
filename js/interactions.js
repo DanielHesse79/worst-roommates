@@ -31,6 +31,36 @@ function notices(s, g, paranoidChance) {
   if (s.confused) return false;
   return Math.random() < (s.has('paranoid') ? paranoidChance : 0) + (g.wary ? 0.35 : 0);
 }
+// What the target is doing right now (only once they've actually started doing it).
+const doing = (t, ...ids) => !!(t.action && t.action.stage === 'do' && ids.includes(t.action.def.id));
+const asleep = t => doing(t, 'sleep', 'nap');
+
+// Drops rubbish on a few free floor cells near a sim, in the same room.
+function scatterMess(g, s, n) {
+  const w = g.world, room = w.roomAt(s.cx, s.cz);
+  let made = 0;
+  for (let tries = 0; tries < 30 && made < n; tries++) {
+    const x = s.cx + Math.floor(rand(-2, 3)), z = s.cz + Math.floor(rand(-2, 3));
+    if (w.roomAt(x, z) === room && w.addMess(x, z, s.id)) made++;
+  }
+  return made;
+}
+
+// Loud music can wake a sleeper, who then blames whoever turned it on.
+function musicWakes(s, g, m) {
+  const noise = g.noiseAt(s);
+  if (!noise) return 1;
+  s.sanity = Math.max(0, s.sanity - 0.05 * noise * m);
+  if (Math.random() < 0.02 * noise * m) {
+    const stereo = g.world.objects.get('stereo');
+    const dj = g.sims.find(x => x.id === stereo.dj);
+    if (dj && dj !== s) changeRel(s, dj, -12);
+    g.log(`🔊 ${s.first} is jolted awake by the bass. Again. They are not okay.`, 'dim');
+    s.endAction();
+  }
+  return 1 - 0.75 * noise;
+}
+
 // Sets a few lawn cells around a sim alight (weed torches, mostly).
 function lawnFire(g, s, n) {
   const cells = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]].sort(() => Math.random() - 0.5);
@@ -115,13 +145,32 @@ export const OBJECT_ACTIONS = {
           g.log(`🫘 ${s.name} wolfs down Grandma's three-bean chili. Everyone should leave the house.`, 'evil');
         }
       },
-      tick(s, o, g, a, m) { s.addNeed('hunger', (s.has('glutton') ? 2 : 1.6) * m); } },
+      tick(s, o, g, a, m) { s.addNeed('hunger', (s.has('glutton') ? 2 : 1.6) * m); },
+      finish(s, o, g) { if (s.has('lazy') && Math.random() < 0.4) scatterMess(g, s, 1); } },
     { id: 'poison', label: 'Poison the leftovers', icon: '🧪', evil: true, duration: 15, spot: useSpot,
       available: (s, o) => !o.charred && !o.poisoned,
       finish(s, o, g) {
         o.poisoned = 3; o.poisonedBy = s.id;
         s.evil = Math.min(100, s.evil + 5);
         g.log(`🧪 ${s.name} laces the leftovers with something foul.`, 'evil');
+      } },
+    { id: 'fish', label: 'Microwave fish in the shared kitchen', icon: '🐟', evil: true, duration: 10, spot: useSpot, available: (s, o) => !o.charred,
+      finish(s, o, g) {
+        g.world.stink = { room: 'Kitchen', until: g.clock + 240, by: s.id };
+        s.addNeed('hunger', 30);
+        g.log(`🐟 ${s.first} reheats leftover fish in the microwave. The kitchen will smell like a harbour for hours.`, 'evil');
+      } },
+    { id: 'trash', label: 'Trash the kitchen', icon: '🗑️', evil: true, duration: 15, spot: useSpot,
+      finish(s, o, g) {
+        scatterMess(g, s, 4);
+        // A banana peel for flair. It's rubbish, not evidence: the police don't care about it.
+        const w = g.world;
+        for (let i = 0; i < 12; i++) {
+          const x = s.cx + Math.floor(rand(-2, 3)), z = s.cz + Math.floor(rand(-2, 3));
+          if (!w.isBlocked(x, z) && !w.trapAt(x, z) && !(x === s.cx && z === s.cz)) { w.addTrap('peel', x, z, 1); w.trapAt(x, z).by = s.id; break; }
+        }
+        s.addNeed('fun', 15);
+        g.log(`🗑️ ${s.first} empties the bin across the kitchen floor, adds a banana peel for flair, and walks away.`, 'evil');
       } },
     { id: 'toxin', label: 'Lace with a designer toxin (untraceable)', icon: '⚗️', evil: true, duration: 20, spot: useSpot,
       available: (s, o) => s.rosterId === 'asraa' && !o.charred && !o.poisoned,
@@ -135,7 +184,7 @@ export const OBJECT_ACTIONS = {
       tick(s, o, g, a) {
         once(a, 'roll', 15, () => {
           if (o.flour) { dustExplosion(g, s, o); return; }
-          if (Math.random() < risk(s, 0.3 - 0.04 * s.skills.cooking, o, g)) {
+          if (Math.random() < risk(s, 0.22 - 0.04 * s.skills.cooking, o, g)) {
             g.world.ignite(o.cells[0][0], o.cells[0][1]);
             s.status.onFire = 60;
             g.view.burst(s.x, s.z, 'explosion');
@@ -169,7 +218,7 @@ export const OBJECT_ACTIONS = {
         // Hairspray lingers: anywhere near a flame for the next few hours and they go up like a torch.
         const extra = !!o.sabotaged;
         o.sabotaged = false;
-        s.status.hairspray = extra ? 240 : 120;
+        s.status.hairspray = extra ? 240 : 90;
         s.status.extraHold = extra;
         g.log(extra ? `💇 ${s.name} empties a whole can of EXTRA HOLD hairspray. Their hair is now legally a fire hazard.`
           : `💇 ${s.first} uses half a can of hairspray. Flammable, but fabulous.`, extra ? 'evil' : 'dim');
@@ -185,7 +234,7 @@ export const OBJECT_ACTIONS = {
             s.status.onFire = 60;
             lawnFire(g, s, 3);
             g.log(`🌿🔥 The weed torch's slit hose flares like a dragon. ${s.name} is now the weed.`, 'evil');
-          } else if (Math.random() < risk(s, 0.12, null, g)) {
+          } else if (Math.random() < risk(s, 0.05, null, g)) {
             lawnFire(g, s, 1);
             if (s.has('clumsy') || Math.random() < 0.3) s.status.onFire = 30;
             g.log(`🌿🔥 ${s.name} torches the weeds, the lawn and ${s.status.onFire > 0 ? 'their own trousers' : 'very nearly their own trousers'}.`, 'evil');
@@ -264,11 +313,51 @@ export const OBJECT_ACTIONS = {
     { id: 'sleep', label: 'Sleep', icon: '😴', spot: useSpot, available: canSleepIn, whyNot: bedWhyNot,
       duration: s => Math.max(60, Math.min(480, (100 - s.needs.energy) / 0.35)),
       tick(s, o, g, a, m) {
-        s.addNeed('energy', 0.35 * m); s.health = Math.min(100, s.health + 0.08 * m);
+        s.addNeed('energy', 0.35 * musicWakes(s, g, m) * m); s.health = Math.min(100, s.health + 0.08 * m);
         if (s.needs.hunger < 12 && a.source === 'auto') s.endAction(); // woken by a growling stomach
       } },
     { id: 'nap', label: 'Nap', icon: '💤', duration: 60, spot: useSpot, available: canSleepIn, whyNot: bedWhyNot,
-      tick(s, o, g, a, m) { s.addNeed('energy', 0.35 * m); } },
+      tick(s, o, g, a, m) { s.addNeed('energy', 0.35 * musicWakes(s, g, m) * m); } },
+  ],
+  stereo: [
+    { id: 'dance', label: 'Dance to loud music', icon: '💃', duration: 40, spot: useSpot, available: (s, o) => !o.charred,
+      start(s, o) { o.dj = s.id; },
+      tick(s, o, g, a, m) { s.addNeed('fun', 1.2 * m); o.playing = Math.max(o.playing || 0, 5); } },
+    { id: 'blast', label: 'Blast music at full volume', icon: '🔊', evil: true, duration: 6, spot: useSpot,
+      available: (s, o) => !o.charred && !(o.blasting > 0),
+      finish(s, o, g) {
+        o.blasting = 180; o.dj = s.id;
+        s.addNeed('fun', 15);
+        g.log(`🔊 ${s.name} cranks the stereo to 11. The windows rattle. Somewhere, a baby starts crying.`, 'evil');
+      } },
+    { id: 'stopmusic', label: 'Turn the music off', icon: '🔇', duration: 3, spot: useSpot, available: (s, o) => o.blasting > 0 || o.playing > 0,
+      finish(s, o, g) { o.blasting = 0; o.playing = 0; g.log(`🔇 ${s.first} yanks the stereo's plug out of the wall. Blessed silence.`, 'dim'); } },
+  ],
+  toilet: [
+    { id: 'usetoilet', label: 'Use the toilet (and doomscroll)', icon: '🚽', duration: 20, spot: useSpot, available: (s, o) => !o.charred,
+      tick(s, o, g, a, m) { s.addNeed('fun', 0.4 * m); s.addNeed('hygiene', 0.3 * m); } },
+  ],
+  table: [
+    { id: 'toenails', label: 'Clip toenails at the dinner table', icon: '🦶', evil: true, duration: 12, spot: () => [4, 4],
+      finish(s, o, g) {
+        for (const x of g.sims) {
+          if (x === s || !x.alive || Math.hypot(x.x - s.x, x.z - s.z) > 4) continue;
+          x.addNeed('fun', -15);
+          changeRel(x, s, -8);
+        }
+        scatterMess(g, s, 1);
+        s.addNeed('fun', 10);
+        g.log(`🦶 ${s.first} clips their toenails at the dinner table. One lands in the butter. Nobody will ever know which.`, 'evil');
+      } },
+  ],
+  dresser: [
+    { id: 'feral', label: 'Stop washing. Commit to the bit.', icon: '🦨', evil: true, duration: 5, spot: () => [6, 9],
+      available: s => !(s.status.feral > 0),
+      finish(s, o, g) {
+        s.status.feral = 720;
+        s.needs.hygiene = Math.min(s.needs.hygiene, 12);
+        g.log(`🦨 ${s.first} puts on yesterday's socks. And the day before's. For the next twelve hours, soap is a rumour.`, 'evil');
+      } },
   ],
   computer: [
     { id: 'scheme', label: 'Scheme online', icon: '😈', duration: 45, spot: useSpot, available: (s, o) => !o.charred,
@@ -336,6 +425,8 @@ for (const list of Object.values(OBJECT_ACTIONS)) {
 // ---------- manipulation tactics (only sims with the matching personality can use them) ----------
 
 const say = arr => arr[Math.floor(Math.random() * arr.length)];
+const WHISPERS = ['The ladder is watching you.', 'I licked your toothbrush. Twice.', 'The call is coming from inside the house.',
+  'Your mother phoned. From the basement.', 'Rent went up. Forever.', 'I know what you did with the yoghurt.'];
 const GASLIGHT = ["That never happened. You're remembering it wrong.", "You're being dramatic again.", 'I never said that. Are you feeling okay?', 'Everyone agrees with me, you know.', "You're imagining things. Again."];
 const JOKES = [
   "I told my roommate I'd kill for a sandwich. Anyway, the fridge is free now.",
@@ -484,6 +575,79 @@ export const SIM_ACTIONS = [
       g.sfx('paper');
       g.log(`📝 ${s.first} hands ${t.first} a laminated complaint. The word "kindly" is underlined four times.`, 'evil');
     } },
+  { id: 'whisper', label: 'Whisper creepy things while they sleep', icon: '👂', evil: true, approachSim: true, duration: 12,
+    available: (s, t) => asleep(t), start: (s, t) => asleep(t),
+    finish(s, t, g) {
+      t.sanity = Math.max(0, t.sanity - 15);
+      t.addNeed('energy', -10);
+      g.log(`👂 ${s.first} kneels by ${t.first}'s bed and whispers "${say(WHISPERS)}" until ${t.first} whimpers in their sleep.`, 'evil');
+    } },
+  { id: 'tickle', label: 'Tickle them awake', icon: '🪶', evil: true, approachSim: true, duration: 8,
+    available: (s, t) => asleep(t), start: (s, t) => asleep(t),
+    finish(s, t, g) {
+      t.endAction();
+      const dmg = rand(8, 16) * (t.needs.energy < 30 ? 1.5 : 1);
+      t.health -= dmg;
+      t.sanity = Math.max(0, t.sanity - 6);
+      t.addNeed('fun', -10);
+      changeRel(s, t, -20);
+      g.popup(t, 'HEHEHE', '#ffe14a');
+      if (t.health <= 0) { g.kill(t, 'Laughter'); return; }
+      g.log(`🪶 ${s.first} tickles ${t.first} awake. ${t.first} laughs, screams, and laughs again, furiously. (-${Math.round(dmg)} health)`, 'evil');
+      if (Math.random() < (t.has('hotheaded') ? 0.6 : 0.1)) t.queue.unshift(makeAction(FIGHT, s, 'auto'));
+    } },
+  { id: 'airhorn', label: 'Wake them with an air horn', icon: '📯', evil: true, approachSim: true, duration: 3,
+    available: (s, t) => asleep(t), start: (s, t) => asleep(t),
+    finish(s, t, g) {
+      t.endAction();
+      g.sfx('airhorn');
+      g.view.burst(t.x, t.z, 'fright');
+      t.sanity = Math.max(0, t.sanity - 12);
+      changeRel(s, t, -25);
+      // A weak heart doesn't survive being woken like that.
+      if (t.health < 35 && Math.random() < 0.6) {
+        g.log(`📯 ${s.first} blasts an air horn next to ${t.first}'s ear. ${t.first}'s heart simply hands in its notice.`, 'evil');
+        g.kill(t, 'Fright');
+        return;
+      }
+      g.log(`📯 HOOOONK! ${t.first} levitates out of bed and is now wide awake. Possibly forever.`, 'evil');
+      if (Math.random() < (t.has('hotheaded') ? 0.7 : 0.2)) t.queue.unshift(makeAction(FIGHT, s, 'auto'));
+    } },
+  { id: 'barge', label: 'Barge in on them in the bathroom', icon: '🚪', evil: true, approachSim: true, duration: 4,
+    available: (s, t) => doing(t, 'usetoilet', 'bath', 'radio'), start: (s, t) => doing(t, 'usetoilet', 'bath', 'radio'),
+    finish(s, t, g) {
+      const onLoo = doing(t, 'usetoilet'), radio = doing(t, 'radio');
+      g.sfx('scream');
+      t.addNeed('fun', -25);
+      t.sanity = Math.max(0, t.sanity - 10);
+      changeRel(s, t, -25);
+      if (radio && Math.random() < 0.6) { shock(t, g, 60, 120, 'jumps so hard at the intrusion that the radio goes into the bathwater.'); return; }
+      if (onLoo) {
+        for (const o of g.sims) if (o.alive && o !== t && o !== s) changeRel(o, t, -5);
+        g.log(`🚪📸 ${s.first} barges in while ${t.first} is on the toilet, takes a photo and posts it to the house group chat.`, 'evil');
+      } else {
+        g.log(`🚪 ${s.first} walks in on ${t.first} in the bath, sits on the edge and starts a long chat about taxes.`, 'evil');
+      }
+      t.endAction();
+    } },
+  { id: 'chewloud', label: 'Chew loudly right next to them', icon: '🍿', evil: true, approachSim: true, duration: 12,
+    tick(s, t, g, a, m) { if (Math.random() < 0.3 * m) g.sfx('gulp'); },
+    finish(s, t, g) {
+      t.sanity = Math.max(0, t.sanity - 10);
+      t.addNeed('fun', -12);
+      changeRel(s, t, -12);
+      s.addNeed('hunger', 10);
+      g.log(`🍿 ${s.first} eats crisps with their mouth open, eight centimetres from ${t.first}'s ear. ${t.first}'s eye starts twitching.`, 'evil');
+    } },
+  { id: 'stinkhug', label: 'Give them a long, sweaty hug', icon: '🦨', evil: true, approachSim: true, duration: 8,
+    available: s => s.needs.hygiene < 25,
+    finish(s, t, g) {
+      t.addNeed('hygiene', -45);
+      t.addNeed('fun', -15);
+      changeRel(s, t, -15);
+      g.view.burst(t.x, t.z, 'stink');
+      g.log(`🦨 ${s.first} hasn't washed in days and hugs ${t.first} for a very long time. ${t.first} now smells like ${s.first}.`, 'evil');
+    } },
   { id: 'chat', label: 'Chat', icon: '💬', approachSim: true, duration: 20,
     tick(s, t, g, a, m) {
       s.addNeed('social', 1.2 * m); t.addNeed('social', 1 * m); changeRel(s, t, 0.3 * m);
@@ -615,6 +779,19 @@ export const RESPONDER_ACTIONS = [
     finish(s, t, g) { g.endInvestigation(`📻 ${s.first} patches into the police radio: "All units, a cat is stuck up a tree across town." Inspector Gumshoe sprints for his car.`); } },
 ];
 
+// Somebody has to clean up. They'll remember who made the mess.
+export const CLEAN = {
+  id: 'clean', label: 'Clean up the mess', icon: '🧽', duration: 8, spot: (s, m) => [m.x, m.z], facePos: () => null,
+  available: (s, m, g) => g.world.mess.has(m.key),
+  finish(s, m, g) {
+    if (!g.world.mess.has(m.key)) return;
+    g.world.removeMess(m);
+    s.addNeed('fun', -4);
+    const culprit = g.sims.find(o => o.id === m.by && o !== s);
+    if (culprit) changeRel(s, culprit, -6);
+  },
+};
+
 const tombSpot = (s, t, g) => s.adjacentTo({ cx: t.x, cz: t.z }, g.world);
 export const TOMB_ACTIONS = [
   { id: 'dance', label: 'Dance on the grave', icon: '💃', evil: true, duration: 30, spot: tombSpot,
@@ -630,7 +807,7 @@ export const TOMB_ACTIONS = [
 export const GOD_COST = {
   ladder: 20, brick: 30, gas: 25, wiring: 25, spoil: 30, rumor: 15, omen: 40,
   bookshelf: 25, fireworks: 35, piranhas: 40, ghost: 30, chili: 20, letterbomb: 35, cleanup: 10,
-  candles: 20, hairspray: 25, flour: 30, torch: 25, brakes: 40,
+  candles: 20, hairspray: 25, flour: 30, torch: 25, brakes: 40, stereo: 15,
 };
 
 const doorCells = d => (d.axis === 'x' ? [[d.at - 1, d.pos], [d.at, d.pos]] : [[d.pos, d.at - 1], [d.pos, d.at]]);
@@ -694,6 +871,12 @@ function godPowers(pick, g) {
     if (o.type === 'shed' && !o.charred && !o.sabotaged) {
       power('torch', "Slit the weed torch's gas hose", '🌿', objCells(o), () => { o.sabotaged = true; g.log("🌿 The weed torch's gas hose now has a neat little slit in it.", 'tool'); });
     }
+    if (o.type === 'stereo' && !o.charred && !(o.blasting > 0)) {
+      power('stereo', 'Crank it to 11 (nobody to blame)', '🔊', objCells(o), () => {
+        o.blasting = 180; o.dj = null;
+        g.log('🔊 The stereo switches itself on at full volume. Nobody admits to anything.', 'tool');
+      });
+    }
     if (o.type === 'ladder') { ladderPower(); piranhaPower(); }
   } else if (pick.kind === 'car') {
     // Only cars passing the house can be aimed at the front garden.
@@ -729,7 +912,8 @@ export function cleanupPower(pick, g) {
     if (t) {
       return power('Remove the hidden trap', [pick.cell], () => {
         w.removeTrap(t);
-        g.log(t.type === 'wax' ? '🧹 The waxed floor is scuffed back to boring, safe dullness.' : '🧹 The bear trap is pulled out of the lawn and tossed over the fence.', 'tool');
+        g.log({ wax: '🧹 The waxed floor is scuffed back to boring, safe dullness.', peel: '🧹 The banana peel goes in the bin, where it belongs.',
+          beartrap: '🧹 The bear trap is pulled out of the lawn and tossed over the fence.' }[t.type], 'tool');
       });
     }
   }
@@ -795,6 +979,9 @@ export function menuFor(pick, sim, game) {
       break;
     case 'visitor':
       if (game.visit && game.visit.state !== 'leave') VISITOR_ACTIONS.filter(d => d.kinds.includes(game.visit.kind)).forEach(d => add(d, game.visit));
+      break;
+    case 'mess':
+      add(CLEAN, pick.mess);
       break;
     case 'responder':
       RESPONDER_ACTIONS.filter(d => d.kinds.includes(pick.person.kind)).forEach(d => add(d, pick.person));

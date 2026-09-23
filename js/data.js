@@ -57,7 +57,7 @@ export const FURNITURE = [
   { id: 'couch', type: 'couch', name: 'Couch', cells: [[9, 4], [10, 4], [11, 4]] },
   { id: 'fireplace', type: 'fireplace', name: 'Fireplace', cells: [[12, 2]], use: [11, 2] },
   { id: 'tub', type: 'tub', name: 'Bathtub', cells: [[14, 1], [15, 1]], use: [14, 2] },
-  { id: 'toilet', type: 'toilet', name: 'Toilet', cells: [[15, 5]] },
+  { id: 'toilet', type: 'toilet', name: 'Toilet', cells: [[15, 5]], use: [14, 5] },
   { id: 'candles', type: 'candles', name: 'Scented Candles', cells: [[13, 1]], use: [13, 2] },
   { id: 'vanity', type: 'vanity', name: 'Vanity Mirror', cells: [[15, 3]], use: [14, 3] },
   // One bed per sim: only the first N beds are built (see World). bedIndex sets the order.
@@ -71,6 +71,7 @@ export const FURNITURE = [
   { id: 'computer', type: 'computer', name: 'Computer', cells: [[8, 10]], use: [8, 9] },
   { id: 'bookshelf', type: 'bookshelf', name: 'Bookshelf', cells: [[12, 10]], use: [12, 9] },
   { id: 'heater', type: 'heater', name: 'Space Heater', cells: [[14, 9]], use: [13, 9] },
+  { id: 'stereo', type: 'stereo', name: 'Enormous Stereo', cells: [[15, 10]], use: [14, 10] },
   { id: 'ladder', type: 'ladder', name: 'Pool Ladder', cells: [], use: [16, 4], entry: [17, 4] },
   { id: 'grill', type: 'grill', name: 'Rusty Grill', cells: [[18, 10]], use: [18, 11] },
   { id: 'telescope', type: 'telescope', name: 'Telescope', cells: [[20, 12]], use: [19, 12] },

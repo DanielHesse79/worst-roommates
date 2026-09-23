@@ -124,9 +124,23 @@ export class Sfx {
       .catch(() => { /* no file: the synthesised sound stays */ });
   }
 
-  update(dt, running, night, burning) {
+  // The stereo: a synthesised four-on-the-floor thump with a wandering bass line. Full blast is loud.
+  stereoBeat(dt, level) {
+    this.beatTime = (this.beatTime ?? 0) - dt;
+    if (level <= 0 || this.beatTime > 0) return;
+    this.beatTime = 0.46;
+    const t = this.ctx.currentTime;
+    this.bar = ((this.bar || 0) + 1) % 8;
+    this.tone('sine', 150, 42, t, 0.22, 0.32 * level, 0.003);
+    this.noise(t + 0.23, 0.05, 0.05 * level, 'highpass', 6000);
+    const f = 55 * [1, 1, 1.5, 1.33, 1, 1, 1.2, 0.9][this.bar];
+    this.tone('sawtooth', f, f, t + 0.23, 0.2, 0.06 * level, 0.01);
+  }
+
+  update(dt, running, night, burning, music = 0) {
     const on = running && this.ambience && !this.muted && !!this.ctx && this.ctx.state === 'running';
     this.syncAmbientLoop(on ? (night ? 'night' : 'day') : null);
+    if (running && !this.muted && this.ctx && this.ctx.state === 'running') this.stereoBeat(dt, music);
     if (!on) return;
     this.ambientTime -= dt;
     if (this.ambientTime > 0) return;
@@ -361,6 +375,9 @@ export const SOUNDS = {
       a.tone('square', 960, 960, t + i * 0.5, 0.22, 0.04);
       a.tone('square', 740, 740, t + i * 0.5 + 0.25, 0.22, 0.04);
     }
+  },
+  airhorn(a, t) {
+    for (const f of [440, 554, 659]) a.tone('sawtooth', f, f * 0.98, t, 0.9, 0.11, 0.01);
   },
   alarm(a, t) { for (let i = 0; i < 3; i++) { a.tone('square', 880, 880, t + i * 0.25, 0.1, 0.08); a.tone('square', 660, 660, t + i * 0.25 + 0.12, 0.1, 0.08); } },
   win(a, t) { [523, 659, 784, 1046].forEach((f, i) => a.tone('triangle', f, f, t + i * 0.12, 0.35, 0.18)); },

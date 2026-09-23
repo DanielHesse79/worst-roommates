@@ -6,6 +6,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 // Everything shown in the trap palette. `target` says what the player clicks to place it.
 export const TRAPS = [
   { id: 'wax', name: 'Waxed floor', icon: '🧽', target: 'indoor', desc: 'An indoor tile polished to a lethal shine. Anyone walking over it may slip.' },
+  { id: 'peel', name: 'Banana peel', icon: '🍌', target: 'floor', desc: 'Drop a banana peel anywhere, indoors or out. Classic comedy. Occasionally fatal.' },
   { id: 'beartrap', name: 'Bear trap', icon: '🪤', target: 'outdoor', desc: 'Hidden in the grass. Snaps shut and pins the victim in place. Very obviously not an accident.' },
   { id: 'bookshelf', name: 'Wobbly bookshelf', icon: '📚', target: 'object', desc: 'Unscrew the wall brackets. The next sim to walk past gets buried in books.' },
   { id: 'fireworks', name: 'Fireworks stash', icon: '🎆', target: 'object', desc: 'Hide fireworks in the fireplace or grill. Goes off the moment someone lights it.' },
@@ -22,11 +23,13 @@ export const TRAPS = [
   { id: 'torch', name: 'Leaky weed torch', icon: '🌿', target: 'object', desc: "Slit the gas hose on the weed torch in the garden shed. The next gardener goes up along with the weeds." },
   { id: 'brakes', name: 'Cut brake lines', icon: '🚗', target: 'car', desc: 'Click a passing car. It jumps the kerb, ploughs into the front garden and explodes. Time it well (pausing helps).' },
 ];
-export const TRAP_COST = { wax: 15, beartrap: 25 };
+export const TRAP_COST = { wax: 15, beartrap: 25, peel: 10 };
+export const FLOOR_TRAPS = new Set(['wax', 'beartrap', 'peel']);
 
 export function canPlaceFloorTrap(g, id, x, z) {
   const w = g.world;
   if (w.isBlocked(x, z) || w.trapAt(x, z)) return false;
+  if (id === 'peel') return true;
   return id === 'wax' ? w.isIndoor(x, z) : !w.isIndoor(x, z);
 }
 
@@ -37,7 +40,7 @@ export function floorTrapPower(g, id, x, z) {
     key: id, label: t.name, icon: t.icon, cost: TRAP_COST[id], cells: [[x, z]],
     run: () => {
       g.world.addTrap(id, x, z, id === 'wax' ? 3 : 1);
-      g.log(id === 'wax' ? '🧽 A patch of floor is waxed to a mirror shine.' : '🪤 Something metallic is hidden in the grass.', 'tool');
+      g.log({ wax: '🧽 A patch of floor is waxed to a mirror shine.', beartrap: '🪤 Something metallic is hidden in the grass.', peel: '🍌 A banana peel is placed with suspicious precision.' }[id], 'tool');
     },
   };
 }
@@ -71,6 +74,17 @@ export function onEnterCell(g, s) {
         if (!hurt(g, s, rand(30, 55), 'Slip', '#9ad8ff')) { s.endAction(); s.status.passedOut = 30; }
         if (--t.uses <= 0) w.removeTrap(t);
       }
+    } else if (t.type === 'peel') {
+      if (spotted(g, s, 0.25)) {
+        w.removeTrap(t);
+        g.log(`👀 ${s.first} spots a banana peel and kicks it aside, feeling very smug.`, 'dim');
+      } else if (Math.random() < Math.min(0.9, 0.55 + (s.has('clumsy') ? 0.3 : 0) - (s.has('genius') ? 0.15 : 0))) {
+        w.removeTrap(t);
+        g.view.burst(s.x, s.z, 'dust');
+        g.sfx('slip');
+        g.log(`🍌 ${s.name} steps on a banana peel and performs a flawless cartoon backflip.`, 'evil');
+        if (!hurt(g, s, rand(20, 42), 'Slip', '#ffe14a')) { s.endAction(); s.status.passedOut = 20; }
+      }
     } else if (t.type === 'beartrap') {
       if (spotted(g, s, 0.3)) {
         w.removeTrap(t);
@@ -85,6 +99,13 @@ export function onEnterCell(g, s) {
         if (!hurt(g, s, rand(35, 50), 'Bear Trap', '#ff5a5a')) { s.endAction(); s.status.trapped = 120; }
       }
     }
+  }
+
+  const m = w.messAt(s.cx, s.cz);
+  if (m) {
+    s.addNeed('hygiene', -6);
+    s.addNeed('fun', -3);
+    if (Math.random() < 0.2) g.log(`🗑️ ${s.first} steps in something squelchy. It was probably food once.`, 'dim');
   }
 
   const shelf = w.objects.get('bookshelf');

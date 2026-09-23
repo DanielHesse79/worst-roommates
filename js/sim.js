@@ -46,7 +46,8 @@ export class Sim {
   }
 
   has(t) { return this.traits.includes(t); }
-  get confused() { return this.sanity < 35; }
+  // Gaslit, or awake for so long they're hallucinating: either way, accidents happen.
+  get confused() { return this.sanity < 35 || this.needs.energy < 10; }
   canUse(tactic) { return PERSONALITIES[this.personality].tactics.includes(tactic); }
   get cx() { return Math.floor(this.x); }
   get cz() { return Math.floor(this.z); }
@@ -262,10 +263,12 @@ export class Sim {
     }
 
     const world = game.world;
-    // Fresh hairspray plus any open flame nearby: instant human torch.
+    // Extra-hold hairspray goes up the instant it meets any flame, even your own stove. The normal
+    // stuff only catches if you linger next to someone else's.
     if (st.hairspray > 0) {
       st.hairspray -= min;
-      if (!st.swimming && st.onFire <= 0 && game.nearFlame(this, st.extraHold ? 2.5 : 1.3)) {
+      const lit = st.extraHold ? game.nearFlame(this, 2.5) : game.nearFlame(this, 1.1, false) && Math.random() < 0.02 * min;
+      if (!st.swimming && st.onFire <= 0 && lit) {
         st.hairspray = 0;
         st.onFire = 60;
         this.health -= 15;
@@ -315,6 +318,7 @@ export class Sim {
     else if (this.action && this.action.stage === 'do') this.thought = this.action.def.icon;
     else if (st.poisoned > 0) this.thought = '🤢';
     else if (st.gassy > 0) this.thought = '💨';
+    else if (this.needs.hygiene < 15) this.thought = '🦨';
     else if (this.confused && !this.action) this.thought = '🌀';
     else if (this.needs.hunger < 15) this.thought = '🍗❗';
     else if (this.needs.energy < 12) this.thought = '🛏️❗';

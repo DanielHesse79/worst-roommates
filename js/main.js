@@ -5,7 +5,7 @@ import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
 import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS } from './data.js';
 import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress } from './contracts.js';
-import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, floorTrapPower, fartCloud, carCrash } from './traps.js';
+import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, floorTrapPower, fartCloud, carCrash, FLOOR_TRAPS } from './traps.js';
 import { findPower, cleanupPower } from './interactions.js';
 import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
@@ -243,7 +243,7 @@ class Game {
       this.godAction(p);
       return true;
     }
-    if (id === 'wax' || id === 'beartrap') {
+    if (FLOOR_TRAPS.has(id)) {
       if (pick.kind !== 'floor' || !canPlaceFloorTrap(this, id, pick.cell[0], pick.cell[1])) return false;
       this.godAction(floorTrapPower(this, id, pick.cell[0], pick.cell[1]));
       return true;
@@ -272,7 +272,7 @@ class Game {
 
   // Any open flame within r cells of the sim: fire, lit candles or fireplace, a glowing heater,
   // someone cooking, grilling or weeding, or a roommate who is already on fire.
-  nearFlame(s, r) {
+  nearFlame(s, r, own = true) {
     const w = this.world;
     if (w.fire.size && w.fireDistance(s.cx, s.cz) <= Math.floor(r)) return true;
     const near = (x, z) => Math.hypot(x - s.x, z - s.z) <= r;
@@ -284,7 +284,70 @@ class Game {
     const heater = w.objects.get('heater');
     if (heater.cranked > 0 && !heater.charred && at(heater)) return true;
     return this.sims.some(o => o.alive && near(o.x, o.z) && ((o !== s && o.status.onFire > 0)
-      || (o.action && o.action.stage === 'do' && FLAME_ACTIONS.has(o.action.def.id))));
+      || ((own || o !== s) && o.action && o.action.stage === 'do' && FLAME_ACTIONS.has(o.action.def.id))));
+  }
+
+  // How loud the stereo is where this sim is: full blast shakes the whole house.
+  noiseAt(s) {
+    const st = this.world.objects.get('stereo');
+    if (!st || st.charred) return 0;
+    if (st.blasting > 0) return 1;
+    if (!(st.playing > 0)) return 0;
+    return Math.hypot(s.x - st.cells[0][0] - 0.5, s.z - st.cells[0][1] - 0.5) < 6 ? 0.5 : 0.2;
+  }
+
+  musicLevel() {
+    const st = this.world.objects.get('stereo');
+    return !st || st.charred ? 0 : st.blasting > 0 ? 1 : st.playing > 0 ? 0.5 : 0;
+  }
+
+  // Loud music, stench and rubbish: the slow, social ways a house wears people down.
+  updateNuisance(min) {
+    const w = this.world;
+    const st = w.objects.get('stereo');
+    if (st.blasting > 0) {
+      st.blasting -= min;
+      st.blastedFor = (st.blastedFor || 0) + min;
+      if (this.isNight && st.blastedFor > 45 && !st.complained) {
+        st.complained = true;
+        this.log('📞 Mrs. Crabtree bangs on the wall and threatens to call the police. Nobody can hear her over the bass.', 'dim');
+      }
+      if (st.blasting <= 0) { st.blastedFor = 0; st.complained = false; }
+    }
+    if (st.playing > 0) st.playing -= min;
+    if (w.stink && this.clock > w.stink.until) w.stink = null;
+    const messy = new Map();
+    for (const m of w.mess.values()) {
+      const r = w.roomAt(m.x, m.z);
+      if (r) messy.set(r, (messy.get(r) || 0) + 1);
+    }
+    const stinkers = this.sims.filter(s => s.alive && !s.status.swimming && s.needs.hygiene < 15);
+    for (const s of this.sims) {
+      if (!s.alive || s.status.swimming) continue;
+      if (s.status.feral > 0) s.status.feral -= min;
+      const room = w.roomAt(s.cx, s.cz);
+      let gross = 0;
+      if (room && (messy.get(room) || 0) >= 3) gross += 0.5;
+      if (w.stink && room && room.name === w.stink.room && s.id !== w.stink.by) gross += 1;
+      if (this.noiseAt(s) >= 1 && !(s.action && s.action.def.id === 'dance')) gross += 0.3;
+      for (const o of stinkers) {
+        if (o === s) continue;
+        const d = Math.hypot(o.x - s.x, o.z - s.z);
+        if (d > 2) continue;
+        gross += 1;
+        s.rel[o.id] = Math.max(-100, (s.rel[o.id] || 0) - 0.3 * min);
+        // Up close, the smell wins. Fainting next to the pool or the stove is its own problem.
+        if (d < 1.3 && s.status.passedOut <= 0 && s.needs.hygiene >= 15 && Math.random() < 0.004 * min) {
+          s.endAction();
+          s.status.passedOut = 15;
+          this.log(`🤢 ${s.first} gets one proper whiff of ${o.first} and faints.`, 'evil');
+        }
+      }
+      if (gross > 0) {
+        s.addNeed('fun', -0.3 * gross * min);
+        s.sanity = Math.max(0, s.sanity - 0.02 * gross * min);
+      }
+    }
   }
 
   meteorStrike(sim) {
@@ -422,7 +485,7 @@ class Game {
     const c = w.objects.get('candles');
     if (c.lit > 0) {
       c.lit -= min;
-      if (!c.charred && Math.random() < (c.sabotaged ? 0.02 : 0.0005) * min) {
+      if (!c.charred && Math.random() < (c.sabotaged ? 0.02 : 0.0001) * min) {
         const [x, z] = pick([[13, 1], [13, 2], [14, 2]]);
         if (w.ignite(x, z)) {
           c.sabotaged = false;
@@ -441,6 +504,7 @@ class Game {
       }
     }
     w.updateFire(min);
+    this.updateNuisance(min);
   }
 
   step(gdt) {
@@ -490,7 +554,7 @@ class Game {
     }
     const running = gdt > 0 && this.started && !document.hidden;
     this.dialogue.update(dt, running);
-    this.audio.update(dt, running, this.isNight, this.world.fire.size > 0);
+    this.audio.update(dt, running, this.isNight, this.world.fire.size > 0, this.musicLevel());
     this.view.render(dt, now / 1000);
     this.ui.update(dt);
     requestAnimationFrame(t => this.loop(t));

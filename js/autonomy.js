@@ -1,5 +1,5 @@
 // Free will: what an idle sim decides to do when the player isn't directing them.
-import { OBJECT_ACTIONS, SIM_ACTIONS, TOMB_ACTIONS, SWIM, FIGHT, WALK } from './interactions.js';
+import { OBJECT_ACTIONS, SIM_ACTIONS, TOMB_ACTIONS, SWIM, FIGHT, WALK, CLEAN } from './interactions.js';
 import { PERSONALITIES } from './data.js';
 
 const objAct = (type, id) => OBJECT_ACTIONS[type].find(d => d.id === id);
@@ -37,9 +37,19 @@ function pickEvil(s, g) {
     if (r < 10) opts.push({ w: 3, def: simAct('insult'), target: other });
     if (r < (s.has('hotheaded') ? -30 : -60)) opts.push({ w: 1.2, def: FIGHT, target: other });
     if (r < -40) opts.push({ w: 0.6, def: simAct('drink'), target: other });
+    // Socially unacceptable: only offered when it applies (asleep, on the loo...), filtered by viable().
+    if (r < 0) {
+      for (const [id, w] of [['tickle', 0.35], ['airhorn', 0.25], ['whisper', 0.3], ['barge', 0.6], ['chewloud', 0.3], ['stinkhug', 0.4]]) {
+        opts.push({ w, def: simAct(id), target: other });
+      }
+    }
   }
   opts.push({ w: 0.3, def: objAct('fridge', 'poison'), target: o('fridge') });
   opts.push({ w: 0.5, def: objAct('computer', 'darkarts'), target: o('computer') });
+  if (g.isNight) opts.push({ w: 0.6, def: objAct('stereo', 'blast'), target: o('stereo') });
+  opts.push({ w: 0.25, def: objAct('fridge', 'fish'), target: o('fridge') });
+  opts.push({ w: 0.2, def: objAct('fridge', 'trash'), target: o('fridge') });
+  opts.push({ w: 0.2, def: objAct('table', 'toenails'), target: o('table') });
   if (s.has('pyro')) {
     opts.push({ w: 1.5, def: objAct('fireplace', 'light'), target: o('fireplace') });
     opts.push({ w: 0.8, def: objAct('shed', 'weeds'), target: o('shed') });
@@ -87,6 +97,8 @@ function pickNeed(s, g) {
       cands = [...g.world.objects.values()].filter(b => b.type === 'bed')
         .sort((a, b) => (a.id === s.bedId ? -1 : b.id === s.bedId ? 1 : Math.hypot(a.use[0] - s.x, a.use[1] - s.z) - Math.hypot(b.use[0] - s.x, b.use[1] - s.z)))
         .map(b => [objAct('bed', 'sleep'), b]);
+    } else if (need === 'hygiene' && s.status.feral > 0) {
+      continue; // committed to the bit
     } else if (need === 'hygiene') {
       // The vain ones would rather do their hair than wash.
       const hair = [objAct('vanity', 'hair'), o('vanity')], bath = [objAct('tub', 'bath'), o('tub')];
@@ -106,6 +118,8 @@ function pickNeed(s, g) {
         [objAct('fireplace', 'warm'), o('fireplace')],
         [objAct('heater', 'warmhands'), o('heater')],
         [objAct('candles', 'candlelit'), o('candles')],
+        [objAct('stereo', 'dance'), o('stereo')],
+        [objAct('toilet', 'usetoilet'), o('toilet')],
         [objAct('shed', 'weeds'), o('shed')],
       ]);
       if (s.has('stargazer')) cands.unshift([objAct('telescope', 'stargaze'), o('telescope')]);
@@ -123,6 +137,14 @@ function pickCurious(s, g) {
   if (s.has('paranoid') && !s.confused) return null; // a raised flag is exactly what a paranoid sim distrusts
   const def = objAct('mailbox', 'mail');
   return viable(s, g, def, box) ? { def, target: box } : null;
+}
+
+// Tidy sims clean up after the slobs (and hold a grudge about it).
+function pickClean(s, g) {
+  if (s.has('lazy') || s.status.feral > 0 || Math.random() > 0.3) return null;
+  const mess = [...g.world.mess.values()].filter(m => m.by !== s.id)
+    .sort((a, b) => Math.hypot(a.x - s.x, a.z - s.z) - Math.hypot(b.x - s.x, b.z - s.z))[0];
+  return mess && viable(s, g, CLEAN, mess) ? { def: CLEAN, target: mess } : null;
 }
 
 function pickWander(s, g) {
@@ -151,6 +173,6 @@ export function runAutonomy(s, g, min) {
   if (s.idle < 8) return;
   s.idle = 0;
   const starving = s.needs.hunger < 20;
-  const choice = (!starving && pickCurious(s, g)) || (!starving && pickEvil(s, g)) || pickNeed(s, g) || pickWander(s, g);
+  const choice = (!starving && pickCurious(s, g)) || (!starving && pickEvil(s, g)) || pickNeed(s, g) || pickClean(s, g) || pickWander(s, g);
   if (choice) s.enqueue(choice.def, choice.target, 'auto');
 }

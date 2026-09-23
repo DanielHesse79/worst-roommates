@@ -117,7 +117,10 @@ function stepOnTrap(g, p) {
   g.world.removeTrap(t);
   const inv = g.investigation;
   if (inv) { inv.found++; inv.done.add('trap:' + cellKey(t.x, t.z)); }
-  if (t.type === 'wax') {
+  if (t.type === 'peel') {
+    g.sfx('slip');
+    exposed(g, `🍌 ${p.title} slips on a banana peel, lands flat on his back and stares at the sky, questioning his career.`, t.by ? 0 : 4);
+  } else if (t.type === 'wax') {
     g.sfx('slip');
     exposed(g, `🧽 ${p.title} skids across a suspiciously waxed floor and lies there, staring at the ceiling, writing a report in his head.`, 8);
   } else {
@@ -276,9 +279,13 @@ function evidence(g) {
   const add = (id, cell, sus, still, clear, found) => out.push({ id, cell, sus, still, clear, found });
   for (const t of w.traps.values()) {
     const k = cellKey(t.x, t.z);
-    add('trap:' + k, [t.x, t.z], t.type === 'wax' ? 8 : 15, () => w.traps.has(k), () => w.traps.delete(k),
-      t.type === 'wax' ? 'runs a finger over a patch of floor polished to a lethal shine. "Nobody waxes a floor this much. Nobody."'
-        : 'finds a bear trap hidden in the grass. It goes in a very large evidence bag.');
+    if (t.by) continue; // rubbish a roommate dropped isn't your handiwork
+    const found = {
+      wax: [8, 'runs a finger over a patch of floor polished to a lethal shine. "Nobody waxes a floor this much. Nobody."'],
+      peel: [4, 'bags a banana peel placed with suspicious, almost loving, precision.'],
+      beartrap: [15, 'finds a bear trap hidden in the grass. It goes in a very large evidence bag.'],
+    }[t.type];
+    add('trap:' + k, [t.x, t.z], found[0], () => w.traps.has(k), () => w.traps.delete(k), found[1]);
   }
   for (const o of w.objects.values()) {
     const at = o.use || o.cells[0];

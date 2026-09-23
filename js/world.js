@@ -13,6 +13,8 @@ export class World {
       this.objects.set(f.id, { ...f, poisoned: 0, charred: false, broken: false, lit: 0, cranked: 0, present: true });
     }
     this.traps = new Map();      // cellKey -> { type, x, z, uses } hidden floor traps
+    this.mess = new Map();       // cellKey -> { key, x, z, by, kind } rubbish left on the floor
+    this.stink = null;           // { room, until, by }: a room someone has stunk out
     this.piranhas = false;
     this.piranhasKnown = false;
     this.fire = new Map();       // cellKey -> { x, z, life, spread }
@@ -147,6 +149,19 @@ export class World {
   trapAt(x, z) { return this.traps.get(cellKey(x, z)) || null; }
   addTrap(type, x, z, uses) { this.traps.set(cellKey(x, z), { type, x, z, uses }); }
   removeTrap(t) { this.traps.delete(cellKey(t.x, t.z)); }
+
+  // ---------- mess ----------
+
+  messAt(x, z) { return this.mess.get(cellKey(x, z)) || null; }
+
+  addMess(x, z, by) {
+    const k = cellKey(x, z);
+    if (this.isBlocked(x, z) || this.mess.has(k)) return false;
+    this.mess.set(k, { key: k, x, z, by, kind: Math.floor(Math.random() * 3) });
+    return true;
+  }
+
+  removeMess(m) { this.mess.delete(m.key); }
 
   // ---------- tombstones ----------
 

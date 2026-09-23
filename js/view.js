@@ -3,7 +3,7 @@ import { GRID_W, GRID_H } from './data.js';
 import { buildLot, objCenter, WALL_H } from './lot.js';
 import { mat, fireCluster, tombstoneMesh, reaperMesh, meteorMesh, simModel, disposeTree } from './models.js';
 import { Effects } from './effects.js';
-import { canPlaceFloorTrap } from './traps.js';
+import { canPlaceFloorTrap, FLOOR_TRAPS } from './traps.js';
 import { Street } from './street.js';
 import { SpeechView } from './speech-view.js';
 
@@ -180,6 +180,7 @@ export class View {
       if (p.kind === 'door') return { kind: 'door', door: g.world.doors.find(d => d.id === p.id) };
       if (p.kind === 'pool') return { kind: 'pool' };
       if (p.kind === 'visitor') return g.visit ? { kind: 'visitor' } : null;
+      if (p.kind === 'mess') { const mess = g.world.mess.get(p.key); if (mess) return { kind: 'mess', mess }; continue; }
       if (p.kind === 'car') { const car = this.street.cars.find(c => c.id === p.id); if (car && !car.crash) return { kind: 'car', car }; continue; }
       if (p.kind === 'responder') { const person = g.responders.find(r => r.id === p.id); if (person) return { kind: 'responder', person }; continue; }
       const cx = Math.floor(hit.point.x), cz = Math.floor(hit.point.z);
@@ -251,7 +252,7 @@ export class View {
     if (!h || !h.onCanvas || !g.started) { this.canvas.style.cursor = 'default'; return; }
     const pick = this.pick(h.x, h.y);
     const armed = g.armedTrap;
-    if ((armed === 'wax' || armed === 'beartrap') && pick && pick.kind === 'floor') {
+    if (FLOOR_TRAPS.has(armed) && pick && pick.kind === 'floor') {
       const [x, z] = pick.cell;
       const ok = canPlaceFloorTrap(g, armed, x, z);
       this.hoverTile.position.set(x + 0.5, 0.09, z + 0.5);
@@ -311,6 +312,10 @@ export class View {
         }
       }
       if (u.poisonGlow) u.poisonGlow.material.opacity = o.poisoned > 0 ? 0.12 + 0.08 * Math.sin(time * 4) : 0;
+      if (u.speakers) {
+        const beat = o.charred ? 0 : o.blasting > 0 ? 1 : o.playing > 0 ? 0.5 : 0;
+        for (const sp of u.speakers) sp.scale.setScalar(1 + beat * 0.14 * Math.abs(Math.sin(time * 13)));
+      }
       if (u.coil && !u.charred) u.coil.material.emissiveIntensity = o.cranked > 0 ? 1.2 + 0.5 * Math.sin(time * 6) : 0.1;
       if (u.flames) {
         u.flames.visible = o.lit > 0 && !o.charred;

@@ -1,7 +1,7 @@
 // Visual effects: particles, ghosts, player-only trap decals and piranha fins.
 import * as THREE from 'three';
 import { POOL } from './data.js';
-import { mat, disposeTree } from './models.js';
+import { mat, box, disposeTree } from './models.js';
 
 const MAX_PARTICLES = 450;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -34,6 +34,8 @@ const RECIPES = {
   smoke: [{ n: 1, colors: [0x3a3a3a, 0x555555], speed: [0.05, 0.25], up: [0.6, 1.1], g: 0.1, life: [1.8, 3], size: [0.35, 0.6], grow: 1.1 }],
   gas: [{ n: 16, colors: [0x9ad84a, 0xb8e05a, 0x7ab83a], speed: [0.3, 1.0], up: [0.1, 0.5], g: 0.05, life: [1.4, 2.4], size: [0.4, 0.7], grow: 1.3 }],
   plume: [{ n: 1, colors: [0x262626, 0x3d3d3d, 0x505050], speed: [0.05, 0.3], up: [0.9, 1.5], g: 0.15, life: [2.5, 4], size: [0.6, 1.0], grow: 1.6 }],
+  stink: [{ n: 1, colors: [0x8a9a3a, 0x6a7a2a, 0xa0b048], speed: [0.05, 0.2], up: [0.3, 0.6], g: 0.05, life: [1.2, 2], size: [0.12, 0.22], grow: 0.8 }],
+  notes: [{ n: 1, colors: [0xff5ab4, 0x5ad8ff, 0xffe14a, 0x9a6aff], speed: [0.2, 0.6], up: [0.6, 1.2], g: 0, life: [0.9, 1.5], size: [0.12, 0.2], grow: 0.2, additive: true }],
   steam: [{ n: 7, colors: [0xf2f2f2, 0xd6dde2], speed: [0.1, 0.5], up: [0.7, 1.4], g: 0.2, life: [0.9, 1.6], size: [0.3, 0.55], grow: 1.3 }],
   bubbles: [{ n: 1, colors: [0x6aff6a, 0xaaff55], speed: [0.05, 0.2], up: [0.4, 0.8], g: 0, life: [0.8, 1.3], size: [0.06, 0.12], grow: 0.1 }],
 };
@@ -46,6 +48,7 @@ export class Effects {
     this.particles = [];
     this.ghostMeshes = new Map();
     this.trapMeshes = new Map();
+    this.messMeshes = new Map();
     this.fins = null;
     this.smokeAcc = 0;
   }
@@ -111,10 +114,19 @@ export class Effects {
       const fp = w.objects.get('fireplace');
       if (roof && fp.lit > 0 && Math.random() < 0.4) this.burst(roof.chimney[0], roof.chimney[2], 'smoke', roof.chimney[1]);
       for (const s of g.sims) if (s.alive && s.status.poisoned > 0 && Math.random() < 0.4) this.burst(s.x, s.z, 'bubbles', 1.5);
+      for (const s of g.sims) if (s.alive && !s.status.swimming && s.needs.hygiene < 15 && Math.random() < 0.35) this.burst(s.x, s.z, 'stink', 1.2);
+      const stereo = w.objects.get('stereo');
+      const music = stereo.charred ? 0 : stereo.blasting > 0 ? 0.8 : stereo.playing > 0 ? 0.35 : 0;
+      if (Math.random() < music) this.burst(stereo.cells[0][0] + 0.5, stereo.cells[0][1] + 0.5, 'notes', 1.3);
+      if (w.stink && Math.random() < 0.5) {
+        const r = w.stink.room === 'Kitchen' ? { x0: 1, z0: 1, x1: 7, z1: 6 } : null;
+        if (r) this.burst(rand(r.x0 + 0.5, r.x1 - 0.5), rand(r.z0 + 0.5, r.z1 - 0.5), 'stink', 0.8);
+      }
     }
 
     this.syncGhosts(dt, time);
     this.syncTraps(time);
+    this.syncMess(time);
     this.syncFins(time);
     this.syncFireflies(time);
   }
@@ -162,7 +174,7 @@ export class Effects {
     const traps = this.game.world.traps;
     for (const [k, t] of traps) {
       if (this.trapMeshes.has(k)) continue;
-      const m = t.type === 'wax' ? waxMesh() : bearTrapMesh();
+      const m = t.type === 'wax' ? waxMesh() : t.type === 'peel' ? peelMesh() : bearTrapMesh();
       m.position.set(t.x + 0.5, 0, t.z + 0.5);
       this.scene.add(m);
       this.trapMeshes.set(k, m);
@@ -170,6 +182,32 @@ export class Effects {
     for (const [k, m] of this.trapMeshes) {
       if (!traps.has(k)) { this.scene.remove(m); disposeTree(m); this.trapMeshes.delete(k); continue; }
       if (m.userData.shine) m.userData.shine.material.opacity = 0.35 + 0.2 * Math.sin(time * 3 + m.position.x);
+    }
+  }
+
+  // Rubbish on the floor: everyone can see this one (and click it to clean it up).
+  syncMess(time) {
+    const mess = this.game.world.mess;
+    for (const [k, m] of mess) {
+      if (this.messMeshes.has(k)) continue;
+      const mesh = messMesh(m.kind);
+      mesh.position.set(m.x + 0.5, 0, m.z + 0.5);
+      mesh.rotation.y = Math.random() * Math.PI * 2;
+      mesh.traverse(o => { o.userData.pick = { kind: 'mess', key: k }; });
+      this.scene.add(mesh);
+      this.messMeshes.set(k, mesh);
+    }
+    for (const [k, mesh] of this.messMeshes) {
+      if (mess.has(k)) {
+        mesh.userData.flies.forEach((f, i) => {
+          const a = time * (5 + i * 2) + i * 3 + mesh.position.x;
+          f.position.set(Math.cos(a) * 0.25, 0.35 + Math.sin(a * 1.7) * 0.08, Math.sin(a) * 0.2);
+        });
+        continue;
+      }
+      this.scene.remove(mesh);
+      disposeTree(mesh);
+      this.messMeshes.delete(k);
     }
   }
 
@@ -201,6 +239,7 @@ export class Effects {
     this.flies = null;
     this.ghostMeshes.clear();
     this.trapMeshes.clear();
+    this.messMeshes.clear();
     this.fins = null;
   }
 }
@@ -235,6 +274,56 @@ function waxMesh() {
   shine.position.y = 0.065;
   g.add(shine);
   g.userData.shine = shine;
+  return g;
+}
+
+function peelMesh() {
+  const g = new THREE.Group();
+  const yellow = mat(0xf2d23a);
+  for (let i = 0; i < 3; i++) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.025, 0.24), yellow);
+    strip.position.set(Math.cos(i * 2.1) * 0.08, 0.03, Math.sin(i * 2.1) * 0.08);
+    strip.rotation.y = i * 2.1;
+    g.add(strip);
+  }
+  g.add(box(0.06, 0.05, 0.06, 0x6a4a1a, 0, 0.04, 0));
+  return g;
+}
+
+// 0: a heap of rubbish, 1: a greasy pizza box, 2: a brown puddle of something.
+function messMesh(kind) {
+  const g = new THREE.Group();
+  if (kind === 0) {
+    const bag = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), mat(0x1c1c22, { roughness: 0.3 }));
+    bag.scale.set(1, 0.8, 0.9);
+    bag.position.y = 0.16;
+    g.add(bag, box(0.16, 0.03, 0.12, 0xf4f0e6, 0.2, 0.015, 0.14));
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 8), mat(0xd23a2a));
+    can.rotation.z = Math.PI / 2;
+    can.position.set(-0.2, 0.04, 0.12);
+    const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.2, 8), mat(0x2e8a3a, { roughness: 0.2 }));
+    bottle.rotation.x = Math.PI / 2;
+    bottle.position.set(0.1, 0.045, -0.2);
+    g.add(can, bottle);
+  } else if (kind === 1) {
+    g.add(box(0.48, 0.05, 0.48, 0xf0e2c0, 0, 0.025, 0), box(0.26, 0.012, 0.18, 0xc0392b, 0, 0.056, 0));
+    const lid = box(0.48, 0.02, 0.48, 0xf0e2c0, 0, 0.2, -0.3);
+    lid.rotation.x = -1.1;
+    g.add(lid);
+  } else {
+    const puddle = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.014, 16), mat(0x7a8a22, { roughness: 0.15 }));
+    puddle.scale.set(1, 1, 0.7);
+    puddle.position.y = 0.014;
+    g.add(puddle, box(0.1, 0.06, 0.08, 0x6a4a2a, 0.18, 0.03, 0.05));
+  }
+  // A couple of flies, because of course.
+  const flies = [];
+  for (let i = 0; i < 2; i++) {
+    const fly = new THREE.Mesh(new THREE.SphereGeometry(0.025, 5, 4), mat(0x111111));
+    flies.push(fly);
+    g.add(fly);
+  }
+  g.userData.flies = flies;
   return g;
 }
 

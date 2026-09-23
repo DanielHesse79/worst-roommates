@@ -224,6 +224,25 @@ const BUILDERS = {
     g.userData.flames = flames;
     g.add(flames);
   },
+  stereo(g) {
+    g.add(box(0.9, 0.5, 0.45, 0x1e1e24, 0, 0.25, -0.05));
+    g.add(box(0.5, 0.08, 0.3, 0x3a3a44, 0, 0.54, -0.05));
+    g.add(box(0.3, 0.05, 0.02, 0x3aff8a, 0, 0.36, 0.18, { emissive: 0x3aff8a, emissiveIntensity: 0.8 }));
+    const speakers = [];
+    for (const x of [-0.32, 0.32]) {
+      const sp = new THREE.Group();
+      sp.position.set(x, 0.95, -0.05);
+      sp.add(box(0.28, 0.6, 0.3, 0x2a2a30, 0, 0, 0));
+      for (const [y, r] of [[0.12, 0.09], [-0.12, 0.06]]) {
+        const cone = cyl(r, r * 0.6, 0.04, 0x111111, 0, y, 0.16);
+        cone.rotation.x = Math.PI / 2;
+        sp.add(cone);
+      }
+      speakers.push(sp);
+      g.add(sp);
+    }
+    g.userData.speakers = speakers;
+  },
   vanity(g) {
     g.add(box(0.85, 0.8, 0.45, WOOD, 0, 0.4, 0));
     g.add(box(0.9, 0.04, 0.5, 0xe8e2d6, 0, 0.82, 0));
