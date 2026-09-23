@@ -2,13 +2,27 @@
 import * as THREE from 'three';
 
 const matCache = new Map();
+const sharedMats = new WeakSet();
 export function mat(color, opts = {}) {
   const { unique, ...params } = opts;
   const k = color + JSON.stringify(params);
   if (!unique && matCache.has(k)) return matCache.get(k);
   const m = new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.05, ...params });
-  if (!unique) matCache.set(k, m);
+  if (!unique) { matCache.set(k, m); sharedMats.add(m); }
   return m;
+}
+
+// Free the GPU resources of a removed object tree. Cached materials are shared and kept.
+export function disposeTree(root) {
+  root.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) {
+      if (sharedMats.has(m)) continue;
+      if (m.map) m.map.dispose();
+      m.dispose();
+    }
+  });
 }
 
 export function box(w, h, d, color, x = 0, y = 0, z = 0, opts) {
@@ -315,20 +329,60 @@ function hairFor(head, style, color) {
   }
 }
 
+// Long, glossy hair falling past the shoulders.
+function longHair(head, color) {
+  const hm = mat(color, { roughness: 0.45 });
+  const cap = sphere(0.19, hm, 0, 0.06, -0.04);
+  cap.scale.set(1.02, 0.78, 0.92);
+  head.add(cap);
+  head.add(box(0.36, 0.46, 0.12, hm, 0, -0.18, -0.12));
+  for (const x of [-0.16, 0.16]) head.add(box(0.07, 0.36, 0.1, hm, x, -0.13, 0.03));
+}
+
+// Knee-high boots with a heel.
+function boot(leather) {
+  const g = new THREE.Group();
+  g.add(box(0.11, 0.08, 0.2, leather, 0, 0, 0.04));
+  g.add(box(0.06, 0.07, 0.05, leather, 0, -0.03, -0.05));
+  g.add(cyl(0.085, 0.08, 0.3, leather, 0, 0.17, 0, 12));
+  g.add(cyl(0.095, 0.095, 0.04, leather, 0, 0.32, 0, 12));
+  return g;
+}
+
+function handbag(colour) {
+  const g = new THREE.Group();
+  const leather = mat(colour, { roughness: 0.4 });
+  g.add(box(0.22, 0.16, 0.08, leather, 0, -0.14, 0.02));
+  g.add(box(0.05, 0.03, 0.085, 0xe8c66a, 0, -0.08, 0.02, { metalness: 0.8, roughness: 0.3 }));
+  const strap = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.009, 6, 16, Math.PI), leather);
+  strap.position.set(0, -0.06, 0.02);
+  g.add(strap);
+  return g;
+}
+
 export function simModel(sim) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
+  const glam = sim.look === 'glam';
   const shirt = mat(sim.color, { unique: true });
   const skin = mat(sim.skin, { unique: true });
-  const pants = mat(PANTS_COLORS[sim.id % PANTS_COLORS.length]);
-  const shoe = mat(0x1a1410);
+  const pants = glam ? skin : mat(PANTS_COLORS[sim.id % PANTS_COLORS.length]);
+  const shoe = glam ? mat(0x111114, { roughness: 0.3, metalness: 0.15 }) : mat(0x1a1410);
 
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.3, 4, 12), shirt);
   torso.position.y = 0.8;
   torso.castShadow = true;
   body.add(torso);
-  body.add(box(0.34, 0.12, 0.24, pants, 0, 0.56, 0));
+  if (glam) {
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.3, 0.3, 18), shirt);
+    skirt.position.y = 0.57;
+    skirt.castShadow = true;
+    body.add(skirt);
+    body.add(cyl(0.185, 0.185, 0.035, 0xd4a857, 0, 0.7, 0, 18));
+  } else {
+    body.add(box(0.34, 0.12, 0.24, pants, 0, 0.56, 0));
+  }
   body.add(cyl(0.06, 0.07, 0.1, skin, 0, 1.07, 0));
 
   const head = new THREE.Group();
@@ -336,7 +390,8 @@ export function simModel(sim) {
   body.add(head);
   head.add(sphere(0.17, skin));
   head.add(sphere(0.03, skin, 0, -0.01, 0.17));
-  hairFor(head, (sim.id * 7 + 3) % 5, HAIR_COLORS[(sim.id * 5) % HAIR_COLORS.length]);
+  if (glam) longHair(head, 0x1a0f0a);
+  else hairFor(head, (sim.id * 7 + 3) % 5, HAIR_COLORS[(sim.id * 5) % HAIR_COLORS.length]);
   const eyes = [], brows = [];
   for (const x of [-0.06, 0.06]) {
     const eye = sphere(0.03, 0xffffff, x, 0.02, 0.145);
@@ -348,7 +403,7 @@ export function simModel(sim) {
     brows.push(brow);
     head.add(brow);
   }
-  const grin = box(0.1, 0.015, 0.02, 0x551111, 0, -0.075, 0.155);
+  const grin = box(0.1, 0.015, 0.02, glam ? 0xb0183a : 0x551111, 0, -0.075, 0.155);
   grin.rotation.z = 0.12;
   head.add(grin);
 
@@ -363,11 +418,16 @@ export function simModel(sim) {
     body.add(pivot);
     return pivot;
   };
-  const foot = () => { const f = box(0.1, 0.07, 0.18, shoe, 0, 0, 0.04); return f; };
+  const foot = () => (glam ? boot(shoe) : box(0.1, 0.07, 0.18, shoe, 0, 0, 0.04));
   const legL = limb(0.07, 0.3, pants, -0.08, 0.52, foot());
   const legR = limb(0.07, 0.3, pants, 0.08, 0.52, foot());
   const armL = limb(0.055, 0.28, shirt, -0.23, 1.0, sphere(0.055, skin));
   const armR = limb(0.055, 0.28, shirt, 0.23, 1.0, sphere(0.055, skin));
+  if (glam) {
+    const bag = handbag(0x1a1a1f);
+    bag.position.y = -0.4;
+    armR.add(bag);
+  }
 
   const plumbob = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), mat(0x33ff66, { emissive: 0x22aa44, emissiveIntensity: 0.8, unique: true }));
   plumbob.scale.set(0.8, 1.5, 0.8);

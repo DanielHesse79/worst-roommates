@@ -1,7 +1,7 @@
 // Life outside the lot: traffic, pedestrians, and visitors at the front door.
 import * as THREE from 'three';
 import { GRID_H, SKIN_TONES } from './data.js';
-import { mat, box, simModel } from './models.js';
+import { mat, box, simModel, disposeTree } from './models.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const LANES = [{ z: GRID_H + 3.0, dir: 1 }, { z: GRID_H + 5.4, dir: -1 }];
@@ -87,7 +87,7 @@ export class Street {
       c.mesh.position.x += c.dir * c.speed * tdt;
       for (const l of c.mesh.userData.lights) l.material.emissiveIntensity = 0.3 + 2.5 * night;
       const gone = c.mesh.position.x > X_MAX + 5 || c.mesh.position.x < X_MIN - 5;
-      if (gone) this.scene.remove(c.mesh);
+      if (gone) { this.scene.remove(c.mesh); disposeTree(c.mesh); }
       return !gone;
     });
   }
@@ -109,7 +109,7 @@ export class Street {
       w.m.legL.rotation.x = s * 0.6; w.m.legR.rotation.x = -s * 0.6;
       w.m.armL.rotation.x = -s * 0.5; w.m.armR.rotation.x = s * 0.5;
       const gone = w.m.root.position.x > X_MAX || w.m.root.position.x < X_MIN;
-      if (gone) this.scene.remove(w.m.root);
+      if (gone) { this.scene.remove(w.m.root); disposeTree(w.m.root); }
       return !gone;
     });
   }
@@ -146,6 +146,7 @@ export class Street {
     for (const [id, m] of this.visitorMeshes) {
       if (live.has(id)) continue;
       this.scene.remove(m.root);
+      disposeTree(m.root);
       this.visitorMeshes.delete(id);
       const el = this.labels.get(id);
       if (el) { el.remove(); this.labels.delete(id); }

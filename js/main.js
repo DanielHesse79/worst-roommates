@@ -320,6 +320,10 @@ class Game {
       let sus = DEATH_SUSPICION[cause];
       if (cause === 'Drowning' && !this.world.ladder.present) sus = 25;
       if (cause === 'Starvation' && this.world.doors.some(d => d.bricked)) sus = 30;
+      if (cause === 'Poison' && sim.status.untraceable) {
+        sus = 0;
+        this.log(`⚗️ The coroner consults an expert witness: Dr. Asraa Z. Her report says "natural causes". Case closed.`, 'tool');
+      }
       this.addSuspicion(sus, sus >= 20 ? `🕵️ ${sim.first}'s death looks... suspicious. (+${sus} suspicion)` : null, true);
       const onlookers = visitorsNear(this, sim.x, sim.z, 8);
       if (onlookers.length) this.addSuspicion(15, `👀 ${onlookers.length > 1 ? 'The visitors' : onlookers[0].first} at the door saw the whole thing. (+15 suspicion)`, true);
@@ -418,7 +422,10 @@ class Game {
     }
     if (this.contract && !this.result) {
       this.malice += 2 * min / 60;
-      this.suspicion = Math.max(0, this.suspicion - (this.upgrade('alibi') ? 1 : 0.5) * min / 60);
+      // Airtight alibi and a resident legal expert (Asraa Z) each double how fast suspicion fades.
+      const lawyer = this.sims.some(s => s.rosterId === 'asraa' && s.alive);
+      const fade = 0.5 * (this.upgrade('alibi') ? 2 : 1) * (lawyer ? 2 : 1);
+      this.suspicion = Math.max(0, this.suspicion - fade * min / 60);
       if (this.clock >= this.contract.days * 1440) this.endContract(false, `Time ran out. The deadline was the end of Day ${this.contract.days}.`);
     }
   }

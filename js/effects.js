@@ -1,7 +1,7 @@
 // Visual effects: particles, ghosts, player-only trap decals and piranha fins.
 import * as THREE from 'three';
 import { POOL } from './data.js';
-import { mat } from './models.js';
+import { mat, disposeTree } from './models.js';
 
 const MAX_PARTICLES = 450;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -134,7 +134,7 @@ export class Effects {
       m.position.set(nx, 0.35 + Math.sin(time * 2 + nx) * 0.12, nz);
       m.userData.body.material.opacity = 0.45 + Math.sin(time * 5) * 0.1;
     }
-    for (const [gh, m] of this.ghostMeshes) if (!live.has(gh)) { this.scene.remove(m); this.ghostMeshes.delete(gh); }
+    for (const [gh, m] of this.ghostMeshes) if (!live.has(gh)) { this.scene.remove(m); disposeTree(m); this.ghostMeshes.delete(gh); }
   }
 
   syncTraps(time) {
@@ -147,7 +147,7 @@ export class Effects {
       this.trapMeshes.set(k, m);
     }
     for (const [k, m] of this.trapMeshes) {
-      if (!traps.has(k)) { this.scene.remove(m); this.trapMeshes.delete(k); continue; }
+      if (!traps.has(k)) { this.scene.remove(m); disposeTree(m); this.trapMeshes.delete(k); continue; }
       if (m.userData.shine) m.userData.shine.material.opacity = 0.35 + 0.2 * Math.sin(time * 3 + m.position.x);
     }
   }
@@ -164,7 +164,7 @@ export class Effects {
       }
       this.scene.add(this.fins);
     }
-    if (!on && this.fins) { this.scene.remove(this.fins); this.fins = null; }
+    if (!on && this.fins) { this.scene.remove(this.fins); disposeTree(this.fins); this.fins = null; }
     if (!this.fins) return;
     const cx = (POOL.x0 + POOL.x1) / 2, cz = (POOL.z0 + POOL.z1) / 2;
     this.fins.children.forEach((f, i) => {

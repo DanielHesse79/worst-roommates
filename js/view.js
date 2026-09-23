@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GRID_W, GRID_H } from './data.js';
 import { buildLot, objCenter, WALL_H } from './lot.js';
-import { mat, fireCluster, tombstoneMesh, reaperMesh, meteorMesh, simModel } from './models.js';
+import { mat, fireCluster, tombstoneMesh, reaperMesh, meteorMesh, simModel, disposeTree } from './models.js';
 import { Effects } from './effects.js';
 import { canPlaceFloorTrap } from './traps.js';
 import { Street } from './street.js';
@@ -64,6 +64,7 @@ export class View {
   }
 
   reset() {
+    disposeTree(this.scene);
     this.scene.clear();
     this.scene.add(this.hemi, this.sun, this.sun.target, this.fill);
     this.lot = buildLot(this.scene, this.game.world);
@@ -329,7 +330,7 @@ export class View {
       }
     }
     for (const [k, c] of this.fires) {
-      if (!fire.has(k)) { this.scene.remove(c); this.fires.delete(k); continue; }
+      if (!fire.has(k)) { this.scene.remove(c); disposeTree(c); this.fires.delete(k); continue; }
       c.children.forEach((m, i) => {
         if (!m.isMesh) { m.intensity = 2 + Math.random(); return; }
         const s = 0.8 + 0.35 * Math.sin(time * 14 + i * 2 + c.position.x);
@@ -365,8 +366,9 @@ export class View {
       r.mesh.visible = op > 0.02;
       if (r.t > 3.8) {
         this.scene.remove(r.mesh);
+        disposeTree(r.mesh);
         const sm = this.simModels.get(r.simId);
-        if (sm) { this.scene.remove(sm.root); this.simModels.delete(r.simId); }
+        if (sm) { this.scene.remove(sm.root); disposeTree(sm.root); this.simModels.delete(r.simId); }
       }
     }
     this.reapers = this.reapers.filter(r => r.t <= 3.8);
@@ -383,7 +385,7 @@ export class View {
       v.lookAt(m.x + 8, 30, m.z - 8);
       v.rotateX(Math.PI / 2);
     }
-    for (const [m, v] of this.meteorViz) if (!active.has(m)) { this.scene.remove(v); this.meteorViz.delete(m); }
+    for (const [m, v] of this.meteorViz) if (!active.has(m)) { this.scene.remove(v); disposeTree(v); this.meteorViz.delete(m); }
   }
 
   syncSims(dt, time) {
@@ -552,7 +554,9 @@ function posePose(view, m, sim, dt, t, selected) {
   const worried = sim.status.panic > 0 || sim.status.stuck || sim.status.poisoned > 0;
   m.grin.scale.y = eyesShut ? 0.6 : worried ? 3 : speaking ? 1.5 + Math.abs(Math.sin(t * 14)) * 3 : 1;
   m.grin.scale.x = worried ? 0.6 : 1;
-  m.brows.forEach((b, i) => { b.rotation.z = (i ? 1 : -1) * (worried ? -0.35 : speaking ? 0.15 : 0.35); });
+  // Villains scowl; the charmer's brows stay relaxed and confident.
+  const rest = sim.look === 'glam' ? -0.12 : 0.35;
+  m.brows.forEach((b, i) => { b.rotation.z = (i ? 1 : -1) * (worried ? -0.35 : speaking ? 0.15 : rest); });
   if (speaking && !lying && !sim.moving) head.rotation.z = Math.sin(t * 4 + sim.id) * 0.07;
   const pb = selected ? 1.25 : 1;
   plumbob.scale.set(0.8 * pb, 1.5 * pb, 0.8 * pb);

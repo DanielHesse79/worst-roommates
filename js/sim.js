@@ -19,8 +19,9 @@ export class Sim {
     usedNames.add(name);
     this.name = name;
     this.first = name.split(' ')[0];
-    this.color = SIM_COLORS[index % SIM_COLORS.length];
-    this.skin = SKIN_TONES[Math.floor(Math.random() * SKIN_TONES.length)];
+    this.color = (spec && spec.color) || SIM_COLORS[index % SIM_COLORS.length];
+    this.skin = (spec && spec.skin) || SKIN_TONES[Math.floor(Math.random() * SKIN_TONES.length)];
+    this.look = (spec && spec.look) || null;
     const traitIds = Object.keys(TRAITS).sort(() => Math.random() - 0.5);
     this.traits = spec && spec.traits ? spec.traits : traitIds.slice(0, 2);
     const kinds = Object.keys(PERSONALITIES);

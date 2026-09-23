@@ -93,8 +93,15 @@ export const OBJECT_ACTIONS = {
             return false;
           }
           o.poisoned--;
-          s.status.poisoned += s.has('glutton') ? 110 : 50;
-          g.log(`🧪 ${s.name} digs into the leftovers. They taste... off.`, 'evil');
+          if (o.untraceable) {
+            s.status.poisoned += 110; // a professional dose
+            s.status.untraceable = true;
+            g.log(`⚗️ ${s.name} digs into the leftovers. They taste faintly, elegantly, of almonds.`, 'evil');
+          } else {
+            s.status.poisoned += s.has('glutton') ? 110 : 50;
+            g.log(`🧪 ${s.name} digs into the leftovers. They taste... off.`, 'evil');
+          }
+          if (o.poisoned <= 0) o.untraceable = false;
         }
         if (o.chili > 0) {
           o.chili--;
@@ -109,6 +116,12 @@ export const OBJECT_ACTIONS = {
         o.poisoned = 3; o.poisonedBy = s.id;
         s.evil = Math.min(100, s.evil + 5);
         g.log(`🧪 ${s.name} laces the leftovers with something foul.`, 'evil');
+      } },
+    { id: 'toxin', label: 'Lace with a designer toxin (untraceable)', icon: '⚗️', evil: true, duration: 20, spot: useSpot,
+      available: (s, o) => s.rosterId === 'asraa' && !o.charred && !o.poisoned,
+      finish(s, o, g) {
+        o.poisoned = 2; o.poisonedBy = s.id; o.untraceable = true;
+        g.log('⚗️ Dr. Asraa Z synthesises something elegant and untraceable, and garnishes the leftovers with it.', 'evil');
       } },
   ],
   stove: [
@@ -433,6 +446,14 @@ export const SIM_ACTIONS = [
   FIGHT,
   { id: 'drink', label: 'Offer a "special" drink', icon: '🍹', evil: true, approachSim: true, duration: 10,
     finish(s, t, g) {
+      if (s.rosterId === 'asraa') {
+        // Nobody says no to Dr. Z, and nobody will ever find what was in it.
+        t.status.poisoned += 110;
+        t.status.untraceable = true;
+        changeRel(s, t, 10);
+        g.log(`🍸 Dr. Asraa Z hands ${t.first} a cocktail with a smile. ${t.first} doesn't even think to hesitate.`, 'evil');
+        return;
+      }
       if (notices(t, g, 0.7)) {
         changeRel(s, t, -10);
         g.log(`👀 ${t.first} eyes the drink, then ${s.first}, and pours it into a plant.`, 'dim');
@@ -484,6 +505,11 @@ export const VISITOR_ACTIONS = [
     finish(s, t, g) { g.dismissVisitors(`💬 ${s.first} chats until the visitors run out of things to say. They leave, slightly traumatised.`); } },
   { id: 'charmcop', label: 'Charm the officer', icon: '😘', duration: 15, ...atDoor, kinds: ['cop'], available: s => s.canUse('lure'),
     finish(s, t, g) {
+      if (s.rosterId === 'asraa') {
+        g.suspicion = Math.max(0, g.suspicion - 40);
+        g.dismissVisitors('⚖️ Dr. Asraa Z, the law firm\'s favourite expert witness, explains every death in such dazzling detail that Officer Plod apologises for bothering her. (-40 suspicion)');
+        return;
+      }
       g.suspicion = Math.max(0, g.suspicion - 25);
       g.dismissVisitors(`😘 ${s.first} flirts with Officer Plod until he forgets why he came. (-25 suspicion)`);
     } },
