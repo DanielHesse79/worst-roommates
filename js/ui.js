@@ -67,7 +67,11 @@ export class UI {
       if (!card || card.classList.contains('locked')) return;
       const id = card.dataset.recruit, chosen = this.pick.chosen;
       if (chosen.includes(id)) chosen.splice(chosen.indexOf(id), 1);
-      else if (chosen.length < CONTRACTS[this.pick.index].slots) chosen.push(id);
+      else {
+        // A full crew swaps out the earliest pick instead of ignoring the click.
+        if (chosen.length >= CONTRACTS[this.pick.index].slots) chosen.shift();
+        chosen.push(id);
+      }
       g.sfx('click');
       this.updateCrewPicker();
     });
