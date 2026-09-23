@@ -121,7 +121,7 @@ export const LINES = {
   asraa: [
     'Technically I am a doctor. Of chemistry. Of consequences.', 'Relax, it is organic. Most poisons are.',
     'I am billing the law firm for this conversation.', 'Untraceable is my love language.', 'I have testified in forty trials. Never as the defendant.',
-    'Beauty fades. My toxicology report does not.', 'Would you like a drink? It is very... bespoke.',
+    'Beauty fades. Not mine, though. I am like wine.', 'Would you like a drink? It is very... bespoke.',
     'Objection. I am far too pretty to be guilty.', 'I did my thesis on almonds. Ask me why.', 'The coroner and I have an understanding.',
     'Nobody searches the handbag of the expert witness.', 'Chemistry is just cooking where the guests do not wake up.',
   ],
