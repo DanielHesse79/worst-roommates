@@ -37,4 +37,4 @@ Record reproduction steps and results. Use a separate browser profile for clean 
 
 ## Commit & Pull Request Guidelines
 
-This checkout has no Git metadata, so historical commit conventions cannot be verified. Use concise imperative subjects, such as `Fix pool exit pathfinding`. Keep changes focused. PRs should explain the behavior change, link relevant issues, report manual checks, and include screenshots or short recordings for visual changes.
+The repository lives at `github.com/DanielHesse79/worst-roommates`; GitHub Pages publishes `main` as the playable game, so anything merged to `main` goes live. Use concise imperative subjects, such as `Fix pool exit pathfinding`. Keep changes focused. PRs should explain the behavior change, link relevant issues, report manual checks, and include screenshots or short recordings for visual changes.
