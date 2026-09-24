@@ -22,7 +22,7 @@ export class Sim {
     this.color = (spec && spec.color) || SIM_COLORS[index % SIM_COLORS.length];
     this.skin = (spec && spec.skin) || SKIN_TONES[Math.floor(Math.random() * SKIN_TONES.length)];
     this.look = (spec && spec.look) || null;
-    const traitIds = Object.keys(TRAITS).sort(() => Math.random() - 0.5);
+    const traitIds = Object.keys(TRAITS).filter(k => !TRAITS[k].unique).sort(() => Math.random() - 0.5);
     this.traits = spec && spec.traits ? spec.traits : traitIds.slice(0, 2);
     const kinds = Object.keys(PERSONALITIES);
     this.personality = (spec && spec.personality) || kinds[Math.floor(Math.random() * kinds.length)];

@@ -87,6 +87,8 @@ export const TRAITS = {
   noswim: { name: "Can't Swim", icon: '🫧', desc: 'Tires out twice as fast in the pool.' },
   paranoid: { name: 'Paranoid', icon: '👀', desc: 'Often notices poison and refuses "special" drinks.' },
   lazy: { name: 'Lazy', icon: '🥱', desc: 'Energy drains faster. Learns skills slowly.' },
+  // Daniel's own. Never handed out to random roommates.
+  humble: { name: 'Too Humble', icon: '🙇', desc: "Insists he's nothing special. He's an immortal genius who makes his own games. Nothing special.", unique: true },
   stargazer: { name: 'Stargazer', icon: '🔭', desc: 'Drawn to the telescope. The sky notices.' },
   genius: { name: 'Evil Genius', icon: '🧠', desc: 'Learns skills fast — fewer accidents. Annoying.' },
 };
@@ -115,7 +117,7 @@ export const ROSTER = [
     pitch: 'Telemarketer. Can talk anyone to death: a silent treatment tanks their Fun, then one of his endless stories finishes the job.' },
   { id: 'asraa', name: 'Asraa Z', personality: 'charmer', traits: ['genius', 'stargazer'], immortal: true, skills: { chemistry: 10, charisma: 11, logic: 10, cooking: 8 },
     look: 'glam', color: 0x8e1f3d, skin: 0xe0ac69, pitch: 'Dr. of chemistry and expert witness at a law firm: the best-paid job in town. Immortal, devastatingly gorgeous, and she gets away with everything: her charisma goes to eleven. Her designer toxins are untraceable, nobody refuses her drinks, and suspicion fades twice as fast around her.' },
-  { id: 'daniel', name: 'Daniel', personality: 'hacker', traits: ['genius', 'lazy'], immortal: true, skills: { logic: 7, handiness: 3 },
+  { id: 'daniel', name: 'Daniel', personality: 'hacker', traits: ['genius', 'humble'], immortal: true, skills: { logic: 7, handiness: 3 },
     pitch: 'Immortal hacker who makes obscure indie games from home (no commute, but no alibi either). From the computer he can overload the wiring or smart-lock every door.' },
   { id: 'vincent', name: 'Vincent', personality: 'slob', traits: ['glutton', 'lazy'], skills: { handiness: 3, chemistry: 2, cooking: 1 },
     look: 'slob', color: 0xc9b26b, pitch: 'Dental hygienist at a discount clinic who brushes his teeth with the toilet brush. Every morning. With pride. Fresh from the bowl, his breath floors grown adults one close-up "good morning" at a time, and sleeping roommates get it worst.' },
