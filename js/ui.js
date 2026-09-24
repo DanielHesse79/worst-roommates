@@ -34,12 +34,14 @@ export class UI {
     this.$('volume').value = String(g.audio.volume * 100);
     this.$('volumeValue').textContent = `${Math.round(g.audio.volume * 100)}%`;
     this.$('ambience').checked = g.audio.ambience;
+    this.$('music').checked = g.audio.music;
     this.$('dialogue').checked = g.dialogue.enabled;
     this.$('volume').addEventListener('input', e => {
       g.audio.ensure(); g.audio.setVolume(Number(e.target.value) / 100);
       this.$('volumeValue').textContent = `${e.target.value}%`;
     });
     this.$('ambience').addEventListener('change', () => g.audio.toggleAmbience());
+    this.$('music').addEventListener('change', () => g.audio.toggleMusic());
     this.$('dialogue').addEventListener('change', () => g.dialogue.toggle());
     this.$('journalBtn').addEventListener('click', () => {
       const narrow = window.innerWidth <= 900;

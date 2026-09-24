@@ -1,13 +1,17 @@
 """Turns raw clips in sounds/originals/ into game-ready sounds in sounds/.
 
 Each clip is trimmed to its first sound event, faded out, level-matched and saved as mono MP3 named
-after the game sound it replaces (punch.mp3, punch-2.mp3, ...). Ambience clips become seamless loops.
+after the game sound it replaces (punch.mp3, punch-2.mp3, ...). Ambience clips become seamless loops,
+and music becomes a level-matched stereo loop.
 Run from the repository root:  python tools/build_sounds.py   (needs ffmpeg on PATH)
+Name groups to rebuild only those:  python tools/build_sounds.py music
 """
 import array
+import json
 import math
 import os
 import subprocess
+import sys
 
 SRC = os.path.join('sounds', 'originals')
 DST = 'sounds'
@@ -40,7 +44,12 @@ AMBIENCE = {
     'amb-day': (['suburban_backyard_am_#1-1790172931716', 'suburban_backyard_am_#2-1790172931702', 'suburban_backyard_am_#3-1790172931703', 'suburban_backyard_am_#4-1790172931704'], 2.0),
     'amb-night': (['night_ambience,_cric_#2-1790173017449', 'night_ambience,_cric_#3-1790173017449', 'night_ambience,_cric_#4-1790173027607'], 1.0),
 }
+# Music: game name -> (source track, crossfade seconds at the loop seam)
+MUSIC = {
+    'music-pause': ('Pause music', 1.0),
+}
 TARGET_DB = -10.0  # loudest 10 ms of every effect lands here
+MUSIC_LUFS = -18.0  # music is level-matched to this integrated loudness
 
 
 def envelope(path, sr=8000, frame=80):
@@ -82,30 +91,54 @@ def effect(src, dst, max_len, fade):
     return length, gain
 
 
+def seam(dur, xfade, level):
+    """Filter graph that folds the last `xfade` seconds over the first, so the clip loops without a click."""
+    body_end = dur - xfade
+    return (f'[0:a]asplit=3[x][y][z];'
+            f'[x]atrim=start={xfade}:end={body_end:.3f},asetpts=PTS-STARTPTS[body];'
+            f'[y]atrim=start={body_end:.3f},asetpts=PTS-STARTPTS,afade=t=out:d={xfade}:curve=qsin[tail];'
+            f'[z]atrim=end={xfade},asetpts=PTS-STARTPTS,afade=t=in:d={xfade}:curve=qsin[head];'
+            f'[tail][head]amix=inputs=2:normalize=0[mix];'
+            f'[body][mix]concat=n=2:v=0:a=1,{level}[out]')
+
+
 def loop(src, dst, xfade):
     _, dur = envelope(src)
-    body_end = dur - xfade
-    fc = (f'[0:a]asplit=3[x][y][z];'
-          f'[x]atrim=start={xfade}:end={body_end:.3f},asetpts=PTS-STARTPTS[body];'
-          f'[y]atrim=start={body_end:.3f},asetpts=PTS-STARTPTS,afade=t=out:d={xfade}:curve=qsin[tail];'
-          f'[z]atrim=end={xfade},asetpts=PTS-STARTPTS,afade=t=in:d={xfade}:curve=qsin[head];'
-          f'[tail][head]amix=inputs=2:normalize=0[mix];'
-          f'[body][mix]concat=n=2:v=0:a=1,loudnorm=I=-26:TP=-3[out]')
-    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', src, '-filter_complex', fc, '-map', '[out]', '-ac', '1', '-ar', '44100', '-b:a', '64k', dst], check=True)
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', src, '-filter_complex', seam(dur, xfade, 'loudnorm=I=-26:TP=-3'),
+                    '-map', '[out]', '-ac', '1', '-ar', '44100', '-b:a', '64k', dst], check=True)
     return dur - xfade
 
 
-def main():
-    for name, (clips, max_len, fade) in EFFECTS.items():
-        for i, clip in enumerate(clips):
-            out = os.path.join(DST, f'{name}.mp3' if i == 0 else f'{name}-{i + 1}.mp3')
-            length, gain = effect(os.path.join(SRC, clip + '.mp3'), out, max_len, fade)
-            print(f'{out:28} {length:5.2f}s {gain:+5.1f}dB')
-    for name, (clips, xfade) in AMBIENCE.items():
-        for i, clip in enumerate(clips):
-            out = os.path.join(DST, f'{name}.mp3' if i == 0 else f'{name}-{i + 1}.mp3')
-            print(f'{out:28} {loop(os.path.join(SRC, clip + ".mp3"), out, xfade):5.2f}s loop')
+def music(src, dst, xfade):
+    """A stereo loop turned up or down to MUSIC_LUFS (a plain gain, so the mix keeps its dynamics)."""
+    _, dur = envelope(src)
+    report = subprocess.run(['ffmpeg', '-hide_banner', '-i', src, '-vn', '-af', 'loudnorm=print_format=json', '-f', 'null', '-'],
+                            capture_output=True, text=True, encoding='utf-8', errors='replace', check=True).stderr
+    measured = float(json.loads(report[report.rindex('{'):report.rindex('}') + 1])['input_i'])
+    gain = MUSIC_LUFS - measured
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', src, '-filter_complex', seam(dur, xfade, f'volume={gain:.1f}dB,alimiter=limit=0.9'),
+                    '-map', '[out]', '-ac', '2', '-ar', '44100', '-b:a', '128k', dst], check=True)
+    return dur - xfade, gain
+
+
+def main(groups):
+    if 'effects' in groups:
+        for name, (clips, max_len, fade) in EFFECTS.items():
+            for i, clip in enumerate(clips):
+                out = os.path.join(DST, f'{name}.mp3' if i == 0 else f'{name}-{i + 1}.mp3')
+                length, gain = effect(os.path.join(SRC, clip + '.mp3'), out, max_len, fade)
+                print(f'{out:28} {length:5.2f}s {gain:+5.1f}dB')
+    if 'ambience' in groups:
+        for name, (clips, xfade) in AMBIENCE.items():
+            for i, clip in enumerate(clips):
+                out = os.path.join(DST, f'{name}.mp3' if i == 0 else f'{name}-{i + 1}.mp3')
+                print(f'{out:28} {loop(os.path.join(SRC, clip + ".mp3"), out, xfade):5.2f}s loop')
+    if 'music' in groups:
+        for name, (track, xfade) in MUSIC.items():
+            out = os.path.join(DST, f'{name}.mp3')
+            length, gain = music(os.path.join(SRC, track + '.mp3'), out, xfade)
+            print(f'{out:28} {length:5.2f}s loop {gain:+5.1f}dB')
 
 
 if __name__ == '__main__':
-    main()
+    main(set(sys.argv[1:]) or {'effects', 'ambience', 'music'})

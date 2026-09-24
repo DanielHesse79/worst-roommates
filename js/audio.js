@@ -4,6 +4,7 @@
 const MUTE_KEY = 'worst-roommates-muted';
 const VOLUME_KEY = 'worst-roommates-volume';
 const AMBIENT_KEY = 'worst-roommates-ambience';
+const MUSIC_KEY = 'worst-roommates-music';
 const MIN_GAP = { blah: 1.1, punch: 0.22, click: 0.06, fire: 0.6, splash: 0.4, fart: 1, death: 0.3, explosion: 0.3, knock: 1.2, siren: 2.4, police: 2.0, engine: 0.9 };
 
 // Recorded variants per sound: name.mp3, name-2.mp3, ... A random one plays each time.
@@ -19,6 +20,11 @@ const STINGS = new Set(['win', 'fail', 'death']); // music: never pitch-shifted
 const AMBIENT_BANK = { day: ['amb-day', 4], night: ['amb-night', 3] };
 const AMBIENT_GAIN = 0.5;
 const LOOP_MARGIN = 0.06; // skip MP3 padding so the loop seam stays silent
+// Music on the title screen and whenever the game is paused. It waits a moment before fading in, so a
+// quick pause (or a win or fail sting) doesn't get talked over, and picks up where it left off.
+const MUSIC_FILE = 'sounds/music-pause.mp3';
+const MUSIC_GAIN = 0.45;
+const MUSIC_DELAY = 0.8;
 
 export class Sfx {
   constructor() {
@@ -30,14 +36,21 @@ export class Sfx {
     this.ambient = {};
     this.ambientRequested = {};
     this.loop = null;
+    this.song = null;
+    this.songBuffer = null;
+    this.songRequested = false;
+    this.songPos = 0;
+    this.songWait = 0;
     this.volume = 0.55;
     this.ambience = true;
+    this.music = true;
     this.ambientTime = 4;
     try { this.muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { this.muted = false; }
     try {
       const saved = localStorage.getItem(VOLUME_KEY);
       if (saved !== null && Number.isFinite(Number(saved))) this.volume = Math.max(0, Math.min(1, Number(saved)));
       this.ambience = localStorage.getItem(AMBIENT_KEY) !== '0';
+      this.music = localStorage.getItem(MUSIC_KEY) !== '0';
     } catch { /* defaults work without storage */ }
     // Browsers only allow audio after a user gesture.
     const unlock = () => { this.ensure(); };
@@ -100,6 +113,12 @@ export class Sfx {
     return this.ambience;
   }
 
+  toggleMusic() {
+    this.music = !this.music;
+    try { localStorage.setItem(MUSIC_KEY, this.music ? '1' : '0'); } catch { /* session preference */ }
+    return this.music;
+  }
+
   // Fetches and decodes every recorded effect in the background. Whatever fails keeps its synthesised version.
   loadSamples() {
     if (typeof fetch !== 'function') return;
@@ -138,6 +157,7 @@ export class Sfx {
   }
 
   update(dt, running, night, burning, music = 0) {
+    this.syncMusic(dt, !running && !document.hidden);
     const on = running && this.ambience && !this.muted && !!this.ctx && this.ctx.state === 'running';
     this.syncAmbientLoop(on ? (night ? 'night' : 'day') : null);
     if (running && !this.muted && this.ctx && this.ctx.state === 'running') this.stereoBeat(dt, music);
@@ -185,6 +205,46 @@ export class Sfx {
     src.onended = () => { src.disconnect(); gain.disconnect(); };
     src.start(t, LOOP_MARGIN + Math.random() * (src.loopEnd - LOOP_MARGIN));
     this.loop = { mode, src, gain };
+  }
+
+  // The title and pause music: fetched on first use, faded in after a short wait, faded out when play resumes.
+  syncMusic(dt, wanted) {
+    if (!this.ctx) return;
+    const on = wanted && this.music && !this.muted && this.ctx.state === 'running';
+    this.songWait = on ? this.songWait + dt : 0;
+    const t = this.ctx.currentTime;
+    if (!on && this.song) {
+      const { src, gain, started } = this.song;
+      this.songPos = (this.songPos + t - started) % this.songBuffer.duration;
+      gain.gain.setTargetAtTime(0, t, 0.35);
+      src.stop(t + 2);
+      this.song = null;
+    }
+    if (!on || this.song || this.songWait < MUSIC_DELAY) return;
+    if (!this.songBuffer) {
+      if (!this.songRequested && typeof fetch === 'function') {
+        this.songRequested = true;
+        fetch(MUSIC_FILE)
+          .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(MUSIC_FILE))))
+          .then(data => this.ctx.decodeAudioData(data))
+          .then(buffer => { this.songBuffer = buffer; })
+          .catch(() => { /* no music, just silence */ });
+      }
+      return;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.songBuffer;
+    src.loop = true;
+    src.loopStart = LOOP_MARGIN;
+    src.loopEnd = src.buffer.duration - LOOP_MARGIN;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.setTargetAtTime(MUSIC_GAIN, t, 0.6);
+    src.connect(gain);
+    gain.connect(this.master); // straight to the volume control: the effects compressor would pump the mix
+    src.onended = () => { src.disconnect(); gain.disconnect(); };
+    src.start(t, Math.max(LOOP_MARGIN, Math.min(this.songPos, src.loopEnd - 0.1)));
+    this.song = { src, gain, started: t };
   }
 
   voice(id = 0, mood = 'chat', length = 28) {
