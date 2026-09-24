@@ -15,6 +15,7 @@ const FIRE_PARK_X = 6.5, POLICE_PARK_X = 15;
 const REACH = 2.3;                        // hose range, in cells
 const SPRAY_MIN = 1.2;                    // game minutes of hosing per burning cell
 const POLICE_COOLDOWN = 600;              // quiet minutes after a search before another one
+const PROOF = 8;                          // how damning evidence must be to arrest you on a witness's word
 // If an inspector dies on the job, the station sends the next one on the list.
 const INSPECTORS = ['Gumshoe', 'Gumshoe Jr.', 'Hawkins', 'Sniffington', 'Poirot-Adjacent', 'Clueless'];
 let nextId = 1;
@@ -376,6 +377,7 @@ function evidence(g) {
     add('wreck', [Math.floor(wreck.x), Math.floor(wreck.z)], 10, () => !wreck.checked, () => { wreck.checked = true; },
       'crawls under the wreck in the front garden. The brake lines were cut. Neatly. With scissors.');
   }
+  if (g.oilSlick > g.clock) add('oil', [10, GRID_H - 1], 8, () => g.oilSlick > g.clock, () => { g.oilSlick = 0; }, 'finds a fresh oil slick across the road, and an empty can of motor oil in your recycling.');
   const ladder = w.ladder;
   if (!ladder.present) add('ladder', ladder.use, 10, () => !ladder.present, () => { ladder.present = true; }, 'notices the pool has no ladder. He writes "WHY" in his notebook and underlines it three times.');
   if (w.piranhas) add('piranhas', ladder.use, 15, () => w.piranhas, () => { w.piranhas = false; w.piranhasKnown = false; }, 'dips a finger in the pool and gets it back slightly shorter. Animal control is called about the piranhas.');
@@ -385,6 +387,45 @@ function evidence(g) {
     add('graves', [t.x, t.z], 4 * graves, () => true, () => {}, `counts ${graves} fresh graves in the garden. "That's a lot of graves for a rental."`);
   }
   return out;
+}
+
+export const evidenceIds = g => evidence(g).map(e => e.id);
+
+// A witness called the police about you. They come quicker than usual, and the first thing they do is
+// check the story: if what the witness saw is still there to find, you're arrested.
+export function reportCrime(g, tip) {
+  if (g.over) return;
+  g.tips.push(tip);
+  const inv = g.investigation;
+  if (!inv) {
+    g.policeCooldown = 0;
+    requestInvestigation(g, `${tip.by}'s call`);
+    if (g.investigation) g.investigation.t = rand(15, 30);
+  } else if (inv.state === 'searching') {
+    takeStatements(g, inv);
+  } else if (inv.state === 'leaving' || inv.state === 'gone') {
+    g.pendingInquiry = g.pendingInquiry || `${tip.by}'s call`;
+  }
+}
+
+// The detective hears out every witness waiting for him, then goes straight to what they described.
+function takeStatements(g, inv) {
+  const p = inv.detective;
+  for (const tip of g.tips.splice(0)) {
+    const said = `${tip.by} saw ${tip.who} ${tip.what}`;
+    if (tip.proof && tip.proof()) {
+      g.arrest(`🚔 ${said}. ${p.title} has the lab check, and the results back up every word. ${tip.who} is under arrest.`);
+      return;
+    }
+    const found = evidence(g).filter(e => tip.ids.includes(e.id) && e.sus >= PROOF);
+    if (!found.length) {
+      g.log(`🗒️ ${p.title} takes a statement: ${said}. Without anything to show for it, it's their word against ${tip.who}'s. He writes it down anyway.`, 'warn');
+      continue;
+    }
+    for (const e of found) e.tip = tip;
+    inv.plan = [...found, ...inv.plan.filter(e => !found.some(f => f.id === e.id))];
+    g.log(`🗒️ ${p.title} takes a statement: ${said}. He heads straight there to take a look.`, 'warn');
+  }
 }
 
 export function requestInvestigation(g, reason) {
@@ -405,6 +446,7 @@ export function endInvestigation(g, msg) {
 function nextStop(g, inv) {
   while (inv.plan.length) {
     const stop = inv.plan.shift();
+    if (stop.tip && !stop.still()) g.log(`🔍 ${inv.detective.title} checks where ${stop.tip.by} said, and finds nothing there. He crosses something out.`, 'dim');
     if (inv.done.has(stop.id) || !stop.still()) continue;
     if (routeTo(g, inv.detective, ...stop.cell) || (breakIn(g, inv.detective) && routeTo(g, inv.detective, ...stop.cell))) return stop;
   }
@@ -432,6 +474,7 @@ function updateInvestigation(g, gdt, min) {
     g.annoyNeighbours(5);
     g.log(`🕵️ ${inv.detective.title} steps out, snaps on a pair of gloves and strolls up the path. "Mind if I look around? That wasn't a question."`, 'warn');
     inv.state = 'searching';
+    takeStatements(g, inv);
   } else if (inv.state === 'searching') {
     const p = inv.detective;
     if (p.trapped > 0 || p.onFire) return;
@@ -453,6 +496,7 @@ function updateInvestigation(g, gdt, min) {
         s.clear();
         if (s.sus > 0) inv.found++;
         if (p.dead) { if (s.sus > 0) g.addSuspicion(s.sus); }
+        else if (s.tip) g.arrest(`🚔 ${p.title} ${s.found} It's exactly what ${s.tip.by} described. ${s.tip.who} is under arrest.`);
         else if (s.sus > 0) exposed(g, `🕵️ ${p.title} ${s.found}`, s.sus);
         else g.log(`🕵️ ${p.title} ${s.found}`, 'tool');
       } else {
@@ -509,6 +553,7 @@ export function resetEmergency(g) {
   g.brigade = null;
   g.investigation = null;
   g.policeCooldown = 0;
+  g.tips = [];
 }
 
 export function updateEmergency(g, gdt, min) {

@@ -121,6 +121,7 @@ class Game {
     this.suspicion = 0;
     this.peakSuspicion = 0;
     this.scoreAtStart = this.score;
+    this.arrested = false;
     this.warned = false;
     this.seenSabotage = false;
     this.oilSlick = 0;
@@ -265,6 +266,24 @@ class Game {
       this.log('🚨 Suspicion is high: sims are now careful around food, wiring and stoves.', 'warn');
     }
     if (!deferFail) this.checkExposed();
+  }
+
+  // Caught and led away in handcuffs: the contract, or the free-play run, is over.
+  arrest(msg) {
+    const p = this.player;
+    if (!p || !p.alive || this.over) return;
+    this.arrested = true;
+    p.endAction();
+    p.queue = [];
+    this.popup(p, '🚔 ARRESTED', '#7ab8ff');
+    this.sfx('police');
+    this.log(msg, 'warn');
+    if (this.contract) { this.endContract(false, msg); return; }
+    this.over = true;
+    this.lastBonus = 0;
+    const session = this.session;
+    setTimeout(() => { if (this.session === session) { this.setSpeed(0); this.ui.showFreeRecap(); } }, 3000);
+    this.ui.refresh();
   }
 
   checkExposed() {

@@ -3,7 +3,8 @@
 //   approachSim?, available?, start?, tick?(s,t,g,a,min), finish?, facePos? }
 import { triggerFireworks, openMail, fartCloud, dustExplosion, TRAPS, TOOLS, toolPrice, toolLock, canPlaceFloorTrap } from './traps.js';
 import { spend, rehire } from './career.js';
-import { responderSpot } from './emergency.js';
+import { responderSpot, evidenceIds } from './emergency.js';
+import { witnessCrime, witnessCleanup } from './crime.js';
 import { visitorOutcome } from './visitors.js';
 import { GRID_W } from './data.js';
 import { summonGang } from './gang.js';
@@ -740,6 +741,8 @@ export const SIM_ACTIONS = [
       changeRel(s, t, 5);
       g.sfx('gulp');
       g.log(`🍹 ${t.name} gulps down ${s.first}'s "special" drink. Delicious. Deadly?`, 'evil');
+      // It shows up in their blood (or at the autopsy) if anyone saw it and tells the police.
+      witnessCrime(g, s, [[s.cx, s.cz], [t.cx, t.cz]], `Spike ${t.first}'s drink`, { victim: t, proof: () => t.status.poisoned > 0 || (!t.alive && t.cause === 'Poison') });
     } },
   { id: 'sbd', label: 'Let one rip (silent but deadly)', icon: '💨', evil: true, approachSim: true, duration: 6,
     available: s => s.status.gassy > 0,
@@ -900,18 +903,6 @@ export const TOMB_ACTIONS = [
 const doorCells = d => (d.axis === 'x' ? [[d.at - 1, d.pos], [d.at, d.pos]] : [[d.pos, d.at - 1], [d.pos, d.at]]);
 const objCells = o => (o.cells.length ? o.cells : [o.use]);
 const objSpot = o => o.use || null;
-const lower = t => t[0].toLowerCase() + t.slice(1);
-
-// Anyone watching (roommates, visitors, responders) turns against you; officially, suspicion goes up.
-export function caughtInTheAct(g, s, cells, what) {
-  const seen = g.witnesses(cells).filter(x => x !== s);
-  if (!seen.length) return;
-  g.seenSabotage = true;
-  for (const x of seen) if (x.rel) changeRel(x, s, -30);
-  const msg = `👀 ${seen.map(x => x.first).join(' and ')} saw ${s.first} ${lower(what)}.`;
-  if (g.contract) g.addSuspicion(g.upgrade('silent') ? 8 : 15, `${msg} (+${g.upgrade('silent') ? 8 : 15} suspicion)`);
-  else g.log(msg, 'warn');
-}
 
 function job(key, label, icon, spot, cells, run, { face = null, time = null, valid = null } = {}) {
   return {
@@ -922,10 +913,13 @@ function job(key, label, icon, spot, cells, run, { face = null, time = null, val
       if (valid && !valid()) { g.log(`${s.first} can't do that there any more.`, 'dim'); return; }
       const price = toolPrice(g, key);
       if (!spend(g, price)) { g.log(`💸 ${s.first} can't afford that ($${price}).`, 'dim'); return; }
+      const before = new Set(evidenceIds(g));
       run(s);
       if (t && t.type) t.rigger = s.id; // so your own free will knows to keep away from it
       g.sfx('power');
-      caughtInTheAct(g, s, cells, label);
+      // Anyone watching decides what to do about it (crime.js). Tidying up is only embarrassing.
+      if (key === 'cleanup') witnessCleanup(g, s, cells, label);
+      else witnessCrime(g, s, cells, label, { ids: evidenceIds(g).filter(id => !before.has(id)), obj: t && t.type ? t : null });
     },
   };
 }
@@ -1099,7 +1093,8 @@ export function menuFor(pick, sim, game) {
       }
       const price = toolPrice(game, d.key), lock = toolLock(sim, d.key);
       const seen = d.cells.length ? game.witnesses(d.cells).filter(x => x !== sim) : [];
-      const note = lock || `${price ? `$${price}` : 'free'}${seen.length ? ` · 👀 ${seen.map(x => x.first).join(', ')} watching` : ''}`;
+      const cop = seen.find(x => x.kind === 'detective' || x.visitKind === 'cop');
+      const note = lock || `${price ? `$${price}` : 'free'}${cop ? ` · 🚔 ${cop.title || cop.first} is watching!` : seen.length ? ` · 👀 ${[...new Set(seen.map(x => x.first))].join(', ')} watching` : ''}`;
       const broke = game.cash < price;
       items.push({ label: d.label, icon: d.icon, evil: true, sabotage: true, note: broke && !lock ? `$${price} · can't afford` : note,
         disabled: !!lock || broke, warn: seen.length > 0, run: () => sim.enqueue(d, pick.obj || pick.door || pick.tomb || null, 'player') });

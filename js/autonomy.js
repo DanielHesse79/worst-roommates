@@ -21,9 +21,9 @@ function viable(s, g, def, target) {
   return reachable(s, def, target, g);
 }
 
-// Nobody uses what they rigged themselves. (What someone else rigged, you don't know about.)
+// Nobody uses what they rigged themselves, or what they watched someone else rig.
 function rigged(s, o) {
-  if (!o || !o.type || o.rigger !== s.id) return false;
+  if (!o || !o.type || (o.rigger !== s.id && !(o.knownBy && o.knownBy.includes(s.id)))) return false;
   return !!(o.sabotaged || o.flour || o.fireworks || o.bomb || o.wobbly || o.poisoned > 0 || o.chili > 0);
 }
 

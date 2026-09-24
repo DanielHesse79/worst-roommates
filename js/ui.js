@@ -454,9 +454,9 @@ export class UI {
   showFreeRecap() {
     const g = this.game;
     const dead = g.player && !g.player.alive;
-    this.$('resultTitle').textContent = dead ? `💀 They got ${g.player.first} first` : 'Household eliminated';
+    this.$('resultTitle').textContent = g.arrested ? `🚔 ${g.player.first} was arrested` : dead ? `💀 They got ${g.player.first} first` : 'Household eliminated';
     this.$('resultBody').innerHTML = `${this.newspaper(g.deaths)}
-      <p>${dead ? '' : `Speed bonus: +${g.lastBonus} · `}Total score: <b>${g.score}</b></p>`;
+      <p>${dead || g.arrested ? '' : `Speed bonus: +${g.lastBonus} · `}Total score: <b>${g.score}</b></p>`;
     this.$('nextBtn').style.display = '';
     this.$('nextBtn').textContent = 'Next household →';
     this.$('retryBtn').style.display = 'none';
