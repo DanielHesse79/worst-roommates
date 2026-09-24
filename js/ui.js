@@ -22,6 +22,9 @@ export class UI {
     const g = this.game;
     document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => g.setSpeed(Number(b.dataset.speed))));
     this.$('freeWillBtn').addEventListener('click', () => { g.freeWill = !g.freeWill; this.refresh(); });
+    this.$('skipBtn').addEventListener('click', () => g.toggleAutoSkip());
+    // Watching instead: normal speed until the stretch of work or sleep is over.
+    this.$('skipBanner').addEventListener('click', () => { g.skipHoldUntil = performance.now() + 60 * 60 * 1000; this.watching = true; this.refresh(); });
     this.$('wallsBtn').addEventListener('click', () => { g.view.wallsUp = !g.view.wallsUp; this.refresh(); });
     this.$('roofBtn').addEventListener('click', () => { g.view.roofOn = !g.view.roofOn; this.refresh(); });
     this.$('rotL').addEventListener('click', () => { g.view.cam.goal += Math.PI / 2; });
@@ -183,6 +186,21 @@ export class UI {
     this.showPie(items, x, y, title);
   }
 
+  // "⏩ Adam is at work until 17:00", shown while the clock races.
+  renderSkipBanner() {
+    const g = this.game, el = this.$('skipBanner'), why = g.skipReason(), p = g.player;
+    // Once the stretch you chose to watch is over, time-lapse comes back on its own.
+    const busy = p && p.alive && (p.status.away || (p.action && p.action.stage === 'do' && ['workhome', 'sleep', 'nap'].includes(p.action.def.id)));
+    if (this.watching && !busy) { this.watching = false; g.skipHoldUntil = 0; }
+    if (!why) { el.classList.add('hidden'); return; }
+    const until = h => `${String(Math.floor(h) % 24).padStart(2, '0')}:00`;
+    const j = g.job;
+    const text = why === 'work' ? `⏩ ${p.first} is at ${j.def.place} until ${until(j.def.start + j.def.hours)}`
+      : why === 'homework' ? `⏩ ${p.first} is working at the computer` : `⏩ ${p.first} is asleep`;
+    this.setHTML(el, `${esc(text)} <small>· time-lapse · click to watch at normal speed</small>`);
+    el.classList.remove('hidden');
+  }
+
   houseTitle(side) {
     const n = this.game.neighbours[side];
     if (n.state !== 'home') return '🏚️ Next door: FOR SALE';
@@ -250,6 +268,9 @@ export class UI {
     this.$('money').textContent = `💰 ${g.profile.money}`;
     document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('active', Number(b.dataset.speed) === g.speed));
     this.$('freeWillBtn').textContent = `Free will: ${g.freeWill ? 'ON' : 'OFF'}`;
+    this.$('skipBtn').classList.toggle('active', g.autoSkip);
+    this.$('skipBtn').title = g.autoSkip ? 'Time-lapse is ON while you work or sleep (click to turn off)' : 'Time-lapse is OFF (click to fast-forward work and sleep)';
+    this.renderSkipBanner();
     this.$('freeWillBtn').classList.toggle('active', g.freeWill);
     this.$('wallsBtn').textContent = g.view.wallsUp ? 'Walls: Up' : 'Walls: Cut';
     this.$('roofBtn').classList.toggle('active', g.view.roofOn);

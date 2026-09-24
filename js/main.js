@@ -18,6 +18,8 @@ import { initNeighbours, updateNeighbours, annoyNeighbour, pleaseNeighbour, SIDE
 import { updateEmergency, resetEmergency, requestInvestigation, endInvestigation, respondersNear, responderDown } from './emergency.js';
 
 const SPEEDS = [0, 1, 3, 8];
+const SKIP_SPEED = 40;          // time-lapse while you're at work or asleep
+const SKIP_KEY = 'worst-roommates-autoskip';
 const START_SPOTS = [[9, 8], [11, 8], [10, 7], [12, 8], [8, 7], [13, 7]];
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 // How the people who weren't on the list go.
@@ -43,6 +45,8 @@ class Game {
     this.lastSpeed = 1;
     this.freeWill = true;
     this.started = false;
+    try { this.autoSkip = localStorage.getItem(SKIP_KEY) !== '0'; } catch { this.autoSkip = true; }
+    this.skipHoldUntil = 0;
     this.audio = new Sfx();
     this.dialogue = new Dialogue(this);
     this.ui = new UI(this);
@@ -93,7 +97,7 @@ class Game {
     const beds = [...this.world.objects.values()].filter(o => o.type === 'bed').sort((a, b) => a.bedIndex - b.bedIndex);
     this.sims.forEach((s, i) => { beds[i].owner = s.id; beds[i].name = `${s.first}'s bed`; s.bedId = beds[i].id; });
     this.selected = this.player || this.sims[0];
-    this.clock = 8 * 60;
+    this.clock = 17.5 * 60;
     this.doom = 0;
     this.hackLockUntil = 0;
     this.visit = null;
@@ -150,6 +154,7 @@ class Game {
     const j = this.job, p = this.player;
     if (!j || !j.def || !p) return;
     this.log(`💼 You are ${p.name}, ${j.def.titles[0]}. Shifts ${String(j.def.start).padStart(2, '0')}:00 for ${j.def.hours}h pay $${j.def.pay[0]}. Rent is $40 a night. 💵 You start with $${this.cash}.`, 'tool');
+    this.log(`🌆 It's your first evening in the house. Look around, get to know your roommates, plan something nasty and get some sleep. Work and sleep fly by in time-lapse (⏩).`, 'dim');
   }
 
   retry() {
@@ -189,6 +194,29 @@ class Game {
   setSpeed(i) {
     if (i > 0) this.lastSpeed = i;
     this.speed = i;
+    this.ui.refresh();
+  }
+
+  // Why the clock is racing, or null: your character is at work, working from home, or asleep.
+  // Something dramatic at home (a death, a fire, the police) drops back to normal speed for a moment.
+  skipReason() {
+    const p = this.player;
+    if (!this.autoSkip || !this.started || this.over || this.speed === 0 || !p || !p.alive) return null;
+    if (performance.now() < this.skipHoldUntil) return null;
+    if (p.status.away) return 'work';
+    const a = p.action;
+    if (a && a.stage === 'do' && a.def.id === 'workhome') return 'homework';
+    if (a && a.stage === 'do' && (a.def.id === 'sleep' || a.def.id === 'nap')) return 'sleep';
+    return null;
+  }
+
+  holdSkip(ms = 4000) {
+    if (this.skipReason()) this.skipHoldUntil = performance.now() + ms;
+  }
+
+  toggleAutoSkip() {
+    this.autoSkip = !this.autoSkip;
+    try { localStorage.setItem(SKIP_KEY, this.autoSkip ? '1' : '0'); } catch { /* this session only */ }
     this.ui.refresh();
   }
 
@@ -288,6 +316,7 @@ class Game {
   // Someone who wasn't on the list died here: a visitor, a neighbour, a firefighter, an inspector, a biker.
   // They get a grave in the garden too, and the authorities take a much closer interest.
   outsiderDied(p, cause) {
+    this.holdSkip(5000);
     const name = p.title || p.first;
     const kind = p.kind === 'visitor' ? p.visitKind : p.kind;
     const cx = Math.max(0, Math.min(GRID_W - 1, Math.floor(p.x))), cz = Math.max(0, Math.min(GRID_H - 1, Math.floor(p.z)));
@@ -413,6 +442,7 @@ class Game {
 
   kill(sim, cause) {
     if (!sim.alive) return;
+    this.holdSkip(5000);
     if (sim.immortal) {
       sim.health = 100;
       Object.assign(sim.status, { onFire: 0, poisoned: 0, trapped: 0, passedOut: 0, panic: 0 });
@@ -605,11 +635,14 @@ class Game {
   loop(now) {
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
-    const gdt = dt * SPEEDS[this.speed];
+    const fires = this.world.fire.size, police = !!this.investigation && this.investigation.state === 'driving';
+    const gdt = dt * (this.skipReason() ? SKIP_SPEED : SPEEDS[this.speed]);
     if (gdt > 0) {
       const steps = Math.ceil(gdt / 0.05);
       for (let i = 0; i < steps; i++) this.step(gdt / steps);
     }
+    // A fire breaking out or the police turning up is worth watching at normal speed.
+    if ((!fires && this.world.fire.size) || (!police && this.investigation && this.investigation.state === 'driving')) this.holdSkip();
     const running = gdt > 0 && this.started && !document.hidden;
     this.dialogue.update(dt, running);
     this.audio.update(dt, running, this.isNight, this.world.fire.size > 0, this.musicLevel());

@@ -156,6 +156,11 @@ button { font-family: inherit; }
 .modalBox button:hover { filter: brightness(1.15); }
 
 #topbar #cash { color: #8fe38a; font-weight: 700; }
+#skipBanner { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 7px 16px; border-radius: 999px;
+  background: rgba(20, 16, 38, 0.92); color: #cfe3ff; border: 1px solid rgba(122, 108, 255, 0.6); font: 600 13px 'Segoe UI', system-ui, sans-serif;
+  cursor: pointer; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); }
+#skipBanner small { color: var(--dim); font-weight: 400; }
+#skipBanner.hidden { display: none; }
 #topbar #cash.broke { color: #ff6b5a; }
 .logLine.warn { color: #ffb347; font-weight: 600; }
 
