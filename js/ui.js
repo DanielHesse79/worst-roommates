@@ -2,7 +2,7 @@ import { TRAITS, CAUSES, PERSONALITIES, ROSTER } from './data.js';
 import { menuFor } from './interactions.js';
 import { TRAPS, toolPrice, toolLock } from './traps.js';
 import { JOBS, SKILLS, RENT, jobTitle, shiftPay, shiftTime } from './career.js';
-import { CONTRACTS, CAUSE_VERB, describeObjective, describeBonus, objectiveState, bonusMet, isUnlocked } from './contracts.js';
+import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone } from './contracts.js';
 import { SHOP } from './shop.js';
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
@@ -339,7 +339,7 @@ export class UI {
       traits.map(t => `<span class="trait" title="${esc(TRAITS[t].desc)}">${TRAITS[t].icon} ${esc(TRAITS[t].name)}</span>`).join('');
     const intel = c ? c.targets.map((t, i) => {
       const obj = c.objectives.find(o => o.who === i);
-      return `<div class="intel"><b>🎯 ${esc(t.name)}</b>${obj ? ` <span class="must">must ${esc(CAUSE_VERB[obj.cause])}</span>` : ''}<div class="traits">${chips(t.traits, t.personality)}</div></div>`;
+      return `<div class="intel"><b>🎯 ${esc(t.name)}</b>${obj && obj.cause ? ` <span class="must">✨ ideally: ${esc(CAUSE_VERB[obj.cause])}</span>` : ''}<div class="traits">${chips(t.traits, t.personality)}</div></div>`;
     }).join('') : '<div class="intel"><b>🎯 A random household of wicked roommates</b></div>';
     const roster = ROSTER.map(r => {
       const job = JOBS[r.id];
@@ -373,12 +373,21 @@ export class UI {
     const c = g.contract;
     const work = this.careerHtml();
     if (!c) { this.setHTML(el, g.started ? `<div class="hudTitle">∞ Free Play</div>${work}` : ''); return; }
-    const icon = { done: '✅', failed: '❌', pending: '🎯' };
+    // Each target: alive, dead the client's way (✨), or dead some other way (still counts).
     const objs = c.objectives.map(o => {
-      const st = objectiveState(o, g);
-      return `<li class="${st}">${icon[st]} ${esc(describeObjective(o, g.sims))}</li>`;
-    }).join('') + `<li>🛡️ ${g.player ? esc(g.player.first) : 'You'} must survive, and pay the rent</li>`;
-    const bonus = c.bonus.map(b => `<li class="bonus ${bonusMet(b, g) ? '' : 'missed'}">★ ${esc(describeBonus(b))}</li>`).join('');
+      if (o.type === 'die') {
+        const sim = g.sims[o.who], wish = wishState(o, g);
+        if (sim.alive) return `<li class="pending">🎯 ${esc(sim.first)} <small>✨ ideally: ${esc(CAUSE_VERB[o.cause])}</small></li>`;
+        return `<li class="done">✅ ${esc(sim.first)} ${esc(causeDone(sim))}${wish ? ' ✨' : ''}</li>`;
+      }
+      const targets = g.sims.filter(s => s.role === 'target');
+      if (o.type === 'allDie') return `<li class="${targets.every(s => !s.alive) ? 'done' : 'pending'}">🎯 Every target must die (${targets.filter(s => !s.alive).length}/${targets.length})</li>`;
+      const w = wishState(o, g);
+      const n = new Set(targets.filter(s => !s.alive).map(s => s.cause)).size;
+      return `<li class="${w === true ? 'done' : w === false ? 'missed' : 'pending'}">✨ Ideally ${o.n} different ways to die (${n}/${o.n})</li>`;
+    }).join('') + `<li>🛡️ ${g.player ? esc(g.player.first) : 'You'} must survive, pay the rent and not get caught</li>`;
+    const bonus = c.bonus.map(b => `<li class="bonus ${bonusMet(b, g) ? '' : 'missed'}">★ ${esc(describeBonus(b))}</li>`).join('')
+      + `<li class="bonus extra">💯 ${g.score - g.scoreAtStart} points so far · extra for a clean job and never being seen</li>`;
     const left = Math.max(0, c.days * 1440 - g.clock);
     const hrs = Math.floor(left / 60);
     const sus = Math.round(g.suspicion);
@@ -415,7 +424,9 @@ export class UI {
     if (r.won) {
       const s = r.stars;
       body = `<div class="bigStars">${'★'.repeat(s.count)}${'☆'.repeat(3 - s.count)}</div>
-        <ul class="objs">${s.bonuses.map(b => `<li class="${b.met ? 'done' : 'missed'}">${b.met ? '★' : '☆'} ${esc(b.text)}</li>`).join('')}</ul>
+        <ul class="objs"><li class="done">★ Every target dead, and you got away with it</li>${s.bonuses.map(b => `<li class="${b.met ? 'done' : 'missed'}">${b.met ? '★' : '☆'} ${esc(b.text)}</li>`).join('')}</ul>
+        <ul class="objs extras">${r.extras.map(([label, pts]) => `<li class="done">${esc(label)} <b>+${pts}</b></li>`).join('')}</ul>
+        <p class="payout">💯 ${g.score - g.scoreAtStart} points <small>(total: ${g.score})</small></p>
         <p class="payout">💰 +${r.reward} blood money <small>(wallet: ${g.profile.money})</small></p>`;
     } else {
       body = `<p class="failReason">${esc(r.reason)}</p><p class="hintLine">💡 ${esc(g.contract.hint)}</p>`;

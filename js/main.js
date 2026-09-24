@@ -4,7 +4,7 @@ import { View } from './view.js';
 import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
 import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H } from './data.js';
-import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress } from './contracts.js';
+import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet } from './contracts.js';
 import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf, toolPrice, toolLock } from './traps.js';
 import { sabotageFor, plantDef } from './interactions.js';
 import { initCareer, updateCareer } from './career.js';
@@ -120,6 +120,7 @@ class Game {
     this.result = null;
     this.suspicion = 0;
     this.peakSuspicion = 0;
+    this.scoreAtStart = this.score;
     this.warned = false;
     this.seenSabotage = false;
     this.oilSlick = 0;
@@ -473,19 +474,27 @@ class Game {
 
     const info = CAUSES[cause];
     const line = pick(info.lines);
-    let pts = 100;
-    if (!this.causes.has(cause)) pts += 75;
     const discovered = !this.careerCauses.has(cause);
-    if (discovered) pts += 100;
-    this.combo = this.clock - this.lastDeathClock < 180 ? this.combo + 1 : 1;
-    pts *= this.combo;
+    let pts = 0, wished = false;
+    if (sim !== this.player) {
+      // Every kill scores; a new way of dying scores more, and so does exactly what the client ordered.
+      pts = 100;
+      if (!this.causes.has(cause)) pts += 75;
+      if (discovered) pts += 100;
+      const want = this.contract && this.contract.objectives.find(o => o.type === 'die' && this.sims[o.who] === sim);
+      wished = !!(want && want.cause === cause);
+      if (wished) pts += 200;
+      this.combo = this.clock - this.lastDeathClock < 180 ? this.combo + 1 : 1;
+      pts *= this.combo;
+    }
     this.lastDeathClock = this.clock;
     this.score += pts;
     this.causes.add(cause);
     this.careerCauses.add(cause);
     const day = Math.floor(this.clock / 1440) + 1;
     this.deaths.push({ name: sim.name, cause, line, pts, day, role: sim.role, headline: pick(HEADLINES[cause]) });
-    this.log(`${info.icon} ${sim.name} ${line} +${pts}${this.combo > 1 ? ` (x${this.combo} combo!)` : ''}`, 'death');
+    this.log(`${info.icon} ${sim.name} ${line}${pts ? ` +${pts}` : ''}${pts && this.combo > 1 ? ` (x${this.combo} combo!)` : ''}`, 'death');
+    if (wished) this.log(`✨ Exactly the way the client asked for. (+200 before combo)`, 'tool');
     this.ui.toast(`${info.icon} ${sim.name} died: ${cause}${discovered ? ' — NEW death discovered!' : ''}`);
     if (this.selected === sim) this.selected = null;
 
@@ -536,7 +545,17 @@ class Game {
   endContract(won, reason) {
     if (this.result) return;
     const stars = won ? starsFor(this) : null;
-    this.result = { won, reason, stars, reward: 0 };
+    this.result = { won, reason, stars, reward: 0, extras: [] };
+    if (won) {
+      // Bonus points on top of the kills: the client's way, time to spare, and a clean job.
+      const extras = this.result.extras;
+      if (wishMet(this)) extras.push(['✨ The client\'s way', 300]);
+      const hoursLeft = Math.floor((this.contract.days * 1440 - this.clock) / 60);
+      if (hoursLeft > 0) extras.push([`⏱️ ${hoursLeft}h to spare`, hoursLeft * 10]);
+      if (this.peakSuspicion < 30) extras.push(['🧼 Clean job (suspicion stayed under 30)', 300]);
+      if (!this.seenSabotage) extras.push(['🥷 Nobody ever saw you do it', 200]);
+      for (const [, pts] of extras) this.score += pts;
+    }
     this.over = true;
     if (won) {
       const id = this.contract.id;

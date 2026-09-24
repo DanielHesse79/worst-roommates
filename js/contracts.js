@@ -1,5 +1,6 @@
-// The campaign: each contract names one or more fixed targets 🎯. The player picks which of their own
-// crew 🤝 moves in alongside them. Targets must die the specified way; the crew must all survive.
+// The campaign: each contract names one or more fixed targets 🎯 and the player picks who they'll be.
+// Every target has to die before the deadline without you getting caught; any death counts. The client's
+// preferred way of dying, and finishing early, are worth the other two stars.
 
 export const CAUSE_VERB = {
   Fire: 'die in a fire', Drowning: 'drown', Electrocution: 'be electrocuted', Starvation: 'starve',
@@ -25,7 +26,7 @@ export const CONTRACTS = [
     days: 3, cash: 80, pay: 100,
     targets: [{ name: 'Chad Malwood', traits: ['noswim', 'lazy'], personality: 'drama', needs: { energy: 45 } }],
     objectives: [{ type: 'die', who: 0, cause: 'Drowning' }],
-    bonus: [{ type: 'suspicion', max: 30 }, { type: 'before', day: 3 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 3 }],
   },
   {
     id: 'kitchen', title: 'Kitchen Nightmare', client: "Gordon's food critic",
@@ -34,7 +35,7 @@ export const CONTRACTS = [
     days: 3, cash: 100, pay: 150,
     targets: [{ name: 'Gordon Rot', traits: ['clumsy', 'glutton'], personality: 'vampire', skills: { cooking: 0 } }],
     objectives: [{ type: 'die', who: 0, cause: 'Fire' }],
-    bonus: [{ type: 'unseen' }, { type: 'suspicion', max: 25 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 3 }],
   },
   {
     id: 'wiring', title: 'Bad Reception', client: 'The cable company',
@@ -44,7 +45,7 @@ export const CONTRACTS = [
     targets: [{ name: 'Doyle Vane', traits: ['clumsy', 'lazy'], personality: 'schemer', skills: { handiness: 0 } }],
     setup(g) { g.world.objects.get('tv').broken = true; },
     objectives: [{ type: 'die', who: 0, cause: 'Electrocution' }],
-    bonus: [{ type: 'suspicion', max: 20 }, { type: 'before', day: 3 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 3 }],
   },
   {
     id: 'locked', title: 'Locked In', client: "Mortimer's landlord",
@@ -53,7 +54,7 @@ export const CONTRACTS = [
     days: 4, cash: 160, pay: 200,
     targets: [{ name: 'Mortimer Scowle', traits: ['glutton', 'lazy'], personality: 'vampire', needs: { hunger: 40, energy: 30 } }],
     objectives: [{ type: 'die', who: 0, cause: 'Starvation' }],
-    bonus: [{ type: 'suspicion', max: 60 }, { type: 'before', day: 4 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 4 }],
   },
   {
     id: 'talked', title: 'Talked to Death', client: 'Everyone who has ever met Ophelia',
@@ -62,7 +63,7 @@ export const CONTRACTS = [
     days: 3, cash: 60, pay: 200,
     targets: [{ name: 'Ophelia Blight', traits: ['clumsy', 'stargazer'], personality: 'drama', needs: { fun: 45 } }],
     objectives: [{ type: 'die', who: 0, cause: 'Boredom' }],
-    bonus: [{ type: 'unseen' }, { type: 'suspicion', max: 10 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 3 }],
   },
   {
     id: 'siblings', title: 'Sibling Rivalry', client: 'Their tired mother',
@@ -75,7 +76,7 @@ export const CONTRACTS = [
     ],
     rels: [[0, 1, -70]],
     objectives: [{ type: 'die', who: 0, cause: 'Fight' }, { type: 'die', who: 1, cause: 'Poison' }],
-    bonus: [{ type: 'suspicion', max: 50 }, { type: 'before', day: 4 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 4 }],
   },
   {
     id: 'stars', title: 'Written in the Stars', client: 'An astrologer with a grudge',
@@ -84,7 +85,7 @@ export const CONTRACTS = [
     days: 4, cash: 100, pay: 250,
     targets: [{ name: 'Ophelia Nightshade', traits: ['stargazer', 'pyro'], personality: 'narcissist' }],
     objectives: [{ type: 'die', who: 0, cause: 'Meteor' }],
-    bonus: [{ type: 'unseen' }, { type: 'before', day: 3 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 3 }],
   },
   {
     id: 'chili', title: 'Silent but Deadly', client: 'The roommate with the good nose',
@@ -93,7 +94,7 @@ export const CONTRACTS = [
     days: 3, cash: 100, pay: 300, requires: ['chili'],
     targets: [{ name: 'Gordon Bleu', traits: ['lazy', 'clumsy'], personality: 'drama' }],
     objectives: [{ type: 'die', who: 0, cause: 'Fart' }],
-    bonus: [{ type: 'suspicion', max: 25 }, { type: 'before', day: 3 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 3 }],
   },
   {
     id: 'water', title: 'Something in the Water', client: 'An aquarium with a grudge',
@@ -102,7 +103,7 @@ export const CONTRACTS = [
     days: 4, cash: 180, pay: 350, requires: ['piranhas'],
     targets: [{ name: 'Mildred Vane', traits: ['glutton', 'stargazer'], personality: 'narcissist' }],
     objectives: [{ type: 'die', who: 0, cause: 'Piranhas' }],
-    bonus: [{ type: 'suspicion', max: 60 }, { type: 'before', day: 3 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 3 }],
   },
   {
     id: 'delivery', title: 'Special Delivery', client: 'The local postman',
@@ -111,12 +112,12 @@ export const CONTRACTS = [
     days: 4, cash: 150, pay: 400, requires: ['letterbomb'],
     targets: [{ name: 'Reginald Gall', traits: ['paranoid', 'hotheaded'], personality: 'narcissist' }],
     objectives: [{ type: 'die', who: 0, cause: 'Letter Bomb' }],
-    bonus: [{ type: 'suspicion', max: 70 }, { type: 'before', day: 3 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 3 }],
   },
   {
     id: 'reckoning', title: 'The Reckoning', client: 'The entire neighbourhood',
     brief: 'The Doom family. Four of them. Nobody on the street will miss a single one — but it has to look like a string of tragic accidents.',
-    hint: 'All four must die, in at least three different ways, and all four will be after you. Earn, plan, and spread it out: a pile of identical deaths looks planned.',
+    hint: 'All four must die, and all four will be after you. The client would love three different ways of dying: earn, plan, and spread it out.',
     days: 6, cash: 200, pay: 600,
     targets: [
       { name: 'Lucius Doom', traits: ['hotheaded', 'clumsy'], personality: 'schemer' },
@@ -125,58 +126,65 @@ export const CONTRACTS = [
       { name: 'Ursula Doom', traits: ['stargazer', 'paranoid'], personality: 'narcissist' },
     ],
     objectives: [{ type: 'allDie' }, { type: 'distinct', n: 3 }],
-    bonus: [{ type: 'suspicion', max: 60 }, { type: 'before', day: 5 }],
+    bonus: [{ type: 'wish' }, { type: 'before', day: 5 }],
   },
 ];
 
 const targets = g => g.sims.filter(s => s.role === 'target');
 
+// The job is to kill every target without getting caught; *how* they die is the client's wish, worth a star.
 export function describeObjective(o, sims) {
   const who = o.who !== undefined ? sims[o.who].first : '';
-  if (o.type === 'die') return o.cause ? `${who} must ${CAUSE_VERB[o.cause]}` : `${who} must die`;
+  if (o.type === 'die') return o.cause ? `${who} must die (ideally: ${CAUSE_VERB[o.cause]})` : `${who} must die`;
   if (o.type === 'allDie') return 'Every target must die';
-  if (o.type === 'distinct') return `At least ${o.n} different causes of death`;
+  if (o.type === 'distinct') return `Ideally: at least ${o.n} different causes of death`;
   return '?';
 }
+
+// Did this objective go the way the client wanted? null while it can still happen.
+export function wishState(o, g) {
+  if (o.type === 'die') {
+    const sim = g.sims[o.who];
+    if (sim.alive) return null;
+    return !o.cause || sim.cause === o.cause;
+  }
+  if (o.type === 'distinct') {
+    const causes = new Set(targets(g).filter(s => !s.alive).map(s => s.cause)).size;
+    if (causes >= o.n) return true;
+    return causes + targets(g).filter(s => s.alive).length < o.n ? false : null;
+  }
+  return true;
+}
+export const wishMet = g => g.contract.objectives.every(o => wishState(o, g) === true);
 
 export function describeBonus(b) {
   if (b.type === 'suspicion') return `Keep suspicion under ${b.max}`;
   if (b.type === 'before') return b.day === 2 ? 'Finish on Day 1' : `Finish before Day ${b.day}`;
-  if (b.type === 'unseen') return 'Never get caught sabotaging';
+  if (b.type === 'wish') return "Kill them the way the client asked";
   return '?';
 }
 
-// 'done' | 'failed' | 'pending' for a single objective. `who` indexes the targets (sims[0..n)).
+// 'done' | 'pending' for a single objective. `who` indexes the targets (sims[0..n)). Any death counts.
 export function objectiveState(o, g) {
-  const sim = o.who !== undefined ? g.sims[o.who] : null;
-  if (o.type === 'die') {
-    if (sim.alive) return 'pending';
-    return !o.cause || sim.cause === o.cause ? 'done' : 'failed';
-  }
+  if (o.type === 'die') return g.sims[o.who].alive ? 'pending' : 'done';
   if (o.type === 'allDie') return targets(g).every(s => !s.alive) ? 'done' : 'pending';
-  if (o.type === 'distinct') {
-    const causes = new Set(targets(g).filter(s => !s.alive).map(s => s.cause)).size;
-    if (causes >= o.n) return 'done';
-    return causes + targets(g).filter(s => s.alive).length < o.n ? 'failed' : 'pending';
-  }
-  return 'pending';
+  const w = wishState(o, g);
+  return w === null ? 'pending' : w ? 'done' : 'missed';
 }
 
+// Won once every target is dead and you're still standing. Getting exposed, dying, eviction and the
+// deadline are the ways to lose (see main.js).
 export function evaluate(g) {
   if (g.player && !g.player.alive) return { state: 'failed', reason: `${g.player.name} ${CAUSE_PAST[g.player.cause] || 'died'}. Your roommates got you first.` };
-  for (const o of g.contract.objectives) {
-    if (objectiveState(o, g) !== 'failed') continue;
-    const sim = o.who !== undefined ? g.sims[o.who] : null;
-    if (o.type === 'die') return { state: 'failed', reason: `${sim.name} ${CAUSE_PAST[sim.cause]}. The client specifically wanted them to ${CAUSE_VERB[o.cause]}.` };
-    return { state: 'failed', reason: 'Too many of them died the same way. It looks planned.' };
-  }
-  return { state: g.contract.objectives.every(o => objectiveState(o, g) === 'done') ? 'won' : 'active' };
+  return { state: targets(g).every(s => !s.alive) ? 'won' : 'active' };
 }
+
+export const causeDone = sim => CAUSE_PAST[sim.cause] || 'died';
 
 export function bonusMet(b, g) {
   if (b.type === 'suspicion') return g.peakSuspicion < b.max;
   if (b.type === 'before') return g.clock < (b.day - 1) * 1440;
-  if (b.type === 'unseen') return !g.seenSabotage;
+  if (b.type === 'wish') return wishMet(g);
   return false;
 }
 
