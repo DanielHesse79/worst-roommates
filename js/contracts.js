@@ -193,7 +193,7 @@ export function starsFor(g) {
   return { count: 1 + bonuses.filter(b => b.met).length, bonuses };
 }
 
-// Player profile: best stars per contract, blood money, black-market purchases and the last character played.
+// Player profile: best stars per contract, crypto, black-market purchases and the last character played.
 const KEY = 'worst-roommates-progress';
 export function loadProgress() {
   let p = {};

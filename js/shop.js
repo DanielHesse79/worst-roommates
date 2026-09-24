@@ -1,4 +1,4 @@
-// The black market: spend blood money from contracts on new tools, characters and permanent upgrades.
+// The black market: spend crypto from contracts on new tools, characters and permanent upgrades.
 import { ROSTER } from './data.js';
 
 const RECRUIT_PRICE = { pete: 150, bertha: 150, gus: 200, seance: 200 };
@@ -21,7 +21,7 @@ export const SHOP = [
 // Traps that must be bought before they can be used in contracts (free play has everything).
 export const LOCKED_TRAPS = new Set(SHOP.filter(i => i.kind === 'trap').map(i => i.id));
 
-// Blood money for finishing a contract: paid per newly earned star; replays earn a small tip.
+// Crypto for finishing a contract: paid per newly earned star; replays earn a small tip.
 export function contractReward(contract, stars, previousBest) {
   const fresh = Math.max(0, stars - previousBest);
   return fresh > 0 ? Math.round(contract.pay * fresh / 3) : Math.round(contract.pay * 0.15);

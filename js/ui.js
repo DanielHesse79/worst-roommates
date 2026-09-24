@@ -267,7 +267,7 @@ export class UI {
     this.$('score').textContent = `☠ ${g.score}`;
     this.$('cash').textContent = g.player ? `💵 $${Math.floor(g.cash)}` : '';
     this.$('cash').classList.toggle('broke', g.player && g.cash < 0);
-    this.$('money').textContent = `💰 ${g.profile.money}`;
+    this.$('money').textContent = `🪙 ${g.profile.money}`;
     document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('active', Number(b.dataset.speed) === g.speed));
     this.$('freeWillBtn').textContent = `Free will: ${g.freeWill ? 'ON' : 'OFF'}`;
     this.$('skipBtn').classList.toggle('active', g.autoSkip);
@@ -310,22 +310,22 @@ export class UI {
         <div class="cardHead"><b>${i + 1}. ${esc(c.title)}</b><span class="stars">${stars(got)}</span></div>
         <div class="client">Client: ${esc(c.client)}</div>
         <div class="brief">${open ? esc(c.brief) : 'Complete the previous contract to unlock.'}</div>${open ? req : ''}
-        <div class="cardFoot"><span>⏳ ${c.days}d · 💵 $${c.cash} · 💰 ${c.pay}</span>
+        <div class="cardFoot"><span>⏳ ${c.days}d · 💵 $${c.cash} · 🪙 ${c.pay}</span>
           ${open ? `<button data-play="${i}">${got ? 'Replay' : 'Take the job'}</button>` : '<span>🔒</span>'}</div>
       </div>`;
     }).join('');
     const free = `<div class="card free"><div class="cardHead"><b>∞ Free Play</b></div>
-      <div class="brief">Endless random households, every tool unlocked, no suspicion. You still need a job. Pays 💰10 per kill.</div>
+      <div class="brief">Endless random households, every tool unlocked, no suspicion. You still need a job. Pays 🪙10 per kill.</div>
       <div class="cardFoot"><span></span><button data-play="free">Play</button></div></div>`;
     const market = SHOP.map(item => {
       const owned = p.owned.includes(item.id);
       const afford = p.money >= item.price;
       return `<div class="shopItem ${owned ? 'owned' : ''}" title="${esc(item.desc)}">
         <span class="si">${item.icon}</span><div class="sn"><b>${esc(item.name)}</b><small>${esc(item.desc)}</small></div>
-        ${owned ? '<span class="got">Owned</span>' : `<button data-buy="${item.id}" ${afford ? '' : 'disabled'}>💰 ${item.price}</button>`}</div>`;
+        ${owned ? '<span class="got">Owned</span>' : `<button data-buy="${item.id}" ${afford ? '' : 'disabled'}>🪙 ${item.price}</button>`}</div>`;
     }).join('');
     this.$('contractList').innerHTML = resume + `<h2 class="sectionLabel">Choose your arrangement <span>11 ways to be a terrible roommate</span></h2><div class="cards">${cards}${free}</div>
-      <h2 class="marketTitle">🕶️ Black Market <span class="wallet">💰 ${p.money} blood money</span></h2>
+      <h2 class="marketTitle">🕶️ Black Market <span class="wallet">🪙 ${p.money} crypto</span></h2>
       <div class="market">${market}</div>`;
     this.$('howTo').open = false;
     this.show('board');
@@ -429,7 +429,7 @@ export class UI {
         <ul class="objs"><li class="done">★ Every target dead, and you got away with it</li>${s.bonuses.map(b => `<li class="${b.met ? 'done' : 'missed'}">${b.met ? '★' : '☆'} ${esc(b.text)}</li>`).join('')}</ul>
         <ul class="objs extras">${r.extras.map(([label, pts]) => `<li class="done">${esc(label)} <b>+${pts}</b></li>`).join('')}</ul>
         <p class="payout">💯 ${g.score - g.scoreAtStart} points <small>(total: ${g.score})</small></p>
-        <p class="payout">💰 +${r.reward} blood money <small>(wallet: ${g.profile.money})</small></p>`;
+        <p class="payout">🪙 +${r.reward} crypto <small>(wallet: ${g.profile.money})</small></p>`;
     } else {
       body = `<p class="failReason">${esc(r.reason)}</p><p class="hintLine">💡 ${esc(g.contract.hint)}</p>`;
     }
