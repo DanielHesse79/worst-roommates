@@ -1,11 +1,9 @@
 import { TRAITS, CAUSES, PERSONALITIES, ROSTER } from './data.js';
-import { menuFor, GOD_COST } from './interactions.js';
-import { TRAPS, TRAP_COST } from './traps.js';
+import { menuFor } from './interactions.js';
+import { TRAPS, toolPrice, toolLock } from './traps.js';
+import { JOBS, SKILLS, RENT, jobTitle, shiftPay, shiftTime } from './career.js';
 import { CONTRACTS, CAUSE_VERB, describeObjective, describeBonus, objectiveState, bonusMet, isUnlocked } from './contracts.js';
 import { SHOP } from './shop.js';
-
-const CLEANUP = { id: 'cleanup', name: 'Clean up evidence', icon: '🧹', target: 'evidence',
-  desc: 'Remove a trap or tampering you set up earlier, before a detective finds it. Can still be witnessed.' };
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
 const hex = c => '#' + c.toString(16).padStart(6, '0');
@@ -50,7 +48,7 @@ export class UI {
     this.$('nextBtn').addEventListener('click', () => {
       this.hide('result');
       const next = g.contractIndex === null || g.contractIndex === undefined ? null : g.contractIndex + 1;
-      if (next === null || next >= CONTRACTS.length) g.startFreePlay(); else this.showCrewPicker(next);
+      if (next === null || next >= CONTRACTS.length) g.startFreePlay(g.charId); else this.showCrewPicker(next);
     });
     this.$('contractList').addEventListener('click', e => {
       const buy = e.target.closest('button[data-buy]');
@@ -59,23 +57,21 @@ export class UI {
       if (!b) return;
       const v = b.dataset.play;
       if (v === 'resume') { this.hide('board'); g.setSpeed(g.lastSpeed || 1); }
-      else if (v === 'free') { this.hide('board'); g.startFreePlay(); }
+      else if (v === 'free') this.showCrewPicker('free');
       else this.showCrewPicker(Number(v));
     });
     this.$('crewBody').addEventListener('click', e => {
       const card = e.target.closest('.recruit');
       if (!card || card.classList.contains('locked')) return;
-      const id = card.dataset.recruit, chosen = this.pick.chosen;
-      if (chosen.includes(id)) chosen.splice(chosen.indexOf(id), 1);
-      else {
-        // A full crew swaps out the earliest pick instead of ignoring the click.
-        if (chosen.length >= CONTRACTS[this.pick.index].slots) chosen.shift();
-        chosen.push(id);
-      }
+      this.pick.chosen = card.dataset.recruit;
       g.sfx('click');
       this.updateCrewPicker();
     });
-    this.$('crewGo').addEventListener('click', () => { this.hide('crew'); g.startContract(this.pick.index, this.pick.chosen.slice()); });
+    this.$('crewGo').addEventListener('click', () => {
+      this.hide('crew');
+      if (this.pick.index === 'free') g.startFreePlay(this.pick.chosen);
+      else g.startContract(this.pick.index, this.pick.chosen);
+    });
     this.$('crewBack').addEventListener('click', () => { this.hide('crew'); this.showBoard(); });
     window.addEventListener('keydown', e => {
       if (e.key === 'Escape') this.closePie();
@@ -86,8 +82,7 @@ export class UI {
       if (e.key === 'r' || e.key === 'R') { g.view.roofOn = !g.view.roofOn; this.refresh(); }
       if (e.key === 'Tab') {
         e.preventDefault();
-        const alive = g.sims.filter(s => s.alive);
-        if (alive.length) this.select(alive[(alive.indexOf(g.selected) + 1) % alive.length]);
+        if (g.player && !g.player.status.away) this.select(g.player, true);
       }
     });
     window.addEventListener('pointerdown', e => { if (!this.pie.contains(e.target) && e.target.id !== 'view') this.closePie(); });
@@ -96,12 +91,7 @@ export class UI {
     this.$('portraits').addEventListener('click', e => {
       const el = e.target.closest('[data-id]');
       const s = el && simById(el.dataset.id);
-      if (s && s.alive) this.select(s);
-    });
-    this.$('portraits').addEventListener('dblclick', e => {
-      const el = e.target.closest('[data-id]');
-      const s = el && simById(el.dataset.id);
-      if (s && s.alive) this.select(s, true);
+      if (s && s.alive && !s.status.away) g.view.cam.target.set(s.x, 0, s.z);
     });
     this.$('trapBar').addEventListener('click', e => {
       const b = e.target.closest('button[data-trap]');
@@ -120,9 +110,12 @@ export class UI {
     if (el._html !== html) { el._html = html; el.innerHTML = html; }
   }
 
+  // You only ever control your own character.
   select(sim, center) {
-    this.game.selected = sim;
-    if (center && sim) this.game.view.cam.target.set(sim.x, 0, sim.z);
+    const g = this.game;
+    if (sim !== g.player) return;
+    g.selected = sim;
+    if (center && sim) g.view.cam.target.set(sim.x, 0, sim.z);
     this.refresh();
   }
 
@@ -130,20 +123,18 @@ export class UI {
 
   // ---------- trap palette ----------
 
-  trapCost(id) { return this.game.powerCost({ cost: TRAP_COST[id] ?? GOD_COST[id] }); }
-
   armTrap(id) {
     const g = this.game;
     g.armedTrap = id;
     const hint = this.$('trapHint');
     if (id) {
-      const t = [...TRAPS, CLEANUP].find(tt => tt.id === id);
+      const t = TRAPS.find(tt => tt.id === id);
       const objectTarget = { fireworks: 'the fireplace or grill', gas: 'the stove or grill', wiring: 'the TV or bathtub', spoil: 'the fridge', chili: 'the fridge', letterbomb: 'the mailbox', bookshelf: 'the bookshelf',
-        candles: 'the bathroom candles', hairspray: 'the vanity mirror', flour: 'the stove', torch: 'the garden shed' };
+        candles: 'the bathroom candles', hairspray: 'the vanity mirror', flour: 'the stove', torch: 'the garden shed', brakes: 'the mailbox, by the road' };
       const where = { indoor: 'an indoor floor tile', outdoor: 'a patch of lawn', pool: 'the pool', tomb: 'a gravestone', object: objectTarget[t.id],
-        evidence: 'a hidden trap, a tampered object, the pool or a bricked-up door', car: 'a car passing the house (pause first to aim)',
         floor: 'any floor tile or patch of lawn' }[t.target];
-      hint.textContent = `${t.icon} ${t.name}: click ${where}. Right-click or Esc to cancel.`;
+      const who = g.player ? g.player.first : 'You';
+      hint.textContent = `${t.icon} ${t.name} ($${toolPrice(g, t.id)}): click ${where} and ${who} will go and do it. Right-click or Esc to cancel.`;
       hint.classList.remove('hidden');
     } else {
       hint.classList.add('hidden');
@@ -153,49 +144,42 @@ export class UI {
   }
 
   renderTrapBar() {
-    const g = this.game;
-    if (!g.started) { this.setHTML(this.$('trapBar'), ''); return; }
-    this.setHTML(this.$('trapBar'), '<span class="barLabel">Hidden traps</span>' + TRAPS.map(t => {
+    const g = this.game, p = g.player;
+    if (!g.started || !p) { this.setHTML(this.$('trapBar'), ''); return; }
+    this.setHTML(this.$('trapBar'), '<span class="barLabel">Toolkit</span>' + TRAPS.map(t => {
       if (!g.owns(t.id)) {
         return `<button class="locked" disabled title="${esc(t.name)} — 🔒 buy it on the black market"><span class="ti">${t.icon}</span><span class="tc">🔒</span></button>`;
       }
-      const cost = this.trapCost(t.id);
-      const broke = g.contract && g.malice < cost;
-      return `<button data-trap="${t.id}" class="${g.armedTrap === t.id ? 'armed' : ''} ${broke ? 'broke' : ''}" title="${esc(t.name)} — ${esc(t.desc)}">
-        <span class="ti">${t.icon}</span><span class="tc">${g.contract ? cost + '😈' : 'free'}</span></button>`;
-    }).join('') + this.cleanupButton());
-  }
-
-  cleanupButton() {
-    const g = this.game, t = CLEANUP, cost = this.trapCost(t.id);
-    const broke = g.contract && g.malice < cost;
-    return `<span class="barLabel">Evidence</span><button data-trap="${t.id}" class="${g.armedTrap === t.id ? 'armed' : ''} ${broke ? 'broke' : ''}" title="${esc(t.name)} — ${esc(t.desc)}">
-        <span class="ti">${t.icon}</span><span class="tc">${g.contract ? cost + '😈' : 'free'}</span></button>`;
+      const price = toolPrice(g, t.id), lock = toolLock(p, t.id);
+      const broke = g.cash < price;
+      return `<button data-trap="${t.id}" class="${g.armedTrap === t.id ? 'armed' : ''} ${broke || lock ? 'broke' : ''}" title="${esc(t.name)} — ${esc(t.desc)}${lock ? ` (${esc(lock)})` : ''}">
+        <span class="ti">${t.icon}</span><span class="tc">${lock ? '🔒' + esc(lock.split(' ')[1] + lock.split(' ')[3]) : price ? '$' + price : 'free'}</span></button>`;
+    }).join(''));
   }
 
   onWorldClick(pick, x, y) {
     const g = this.game;
     if (!this.pie.classList.contains('hidden')) { this.closePie(); return; }
     if (!pick || !g.started) return;
+    const me = g.player;
+    if (me && me.status.away) { this.toast(`💼 ${me.first} is at work until ${String((g.job.def.start + g.job.def.hours) % 24).padStart(2, '0')}:00.`); return; }
     if (g.armedTrap) {
-      const cost = this.trapCost(g.armedTrap);
-      if (g.contract && g.malice < cost) { this.toast(`Not enough malice (${cost} needed)`); return; }
       if (g.placeTrap(g.armedTrap, pick)) this.armTrap(null);
-      else this.toast(g.armedTrap === 'cleanup' ? 'Nothing to clean up there' : "That trap can't go there");
+      else this.toast("That can't go there");
       this.refresh();
       return;
     }
-    if (pick.kind === 'sim' && pick.sim === g.selected) return;
-    if (pick.kind === 'sim' && !g.selected) { this.select(pick.sim); return; }
-    const items = menuFor(pick, g.selected, g);
-    if (pick.kind === 'floor') { items.forEach(i => i.run()); this.refresh(); return; }
-    if (pick.kind === 'sim') items.unshift({ label: `Select ${pick.sim.first}`, icon: '👆', run: () => this.select(pick.sim) });
-    const title = pick.kind === 'object' ? pick.obj.name : pick.kind === 'sim' ? pick.sim.name : pick.kind === 'tomb' ? `R.I.P. ${pick.tomb.name} — "${pick.tomb.epitaph || 'Gone.'}"`
+    if (pick.kind === 'sim' && pick.sim === me) return;
+    const items = menuFor(pick, me, g);
+    // Plain floor: just walk there. If there's something to do on it (your own trap), ask.
+    if (pick.kind === 'floor' && items.length <= 1) { items.forEach(i => i.run()); this.refresh(); return; }
+    let title = pick.kind === 'object' ? pick.obj.name : pick.kind === 'sim' ? pick.sim.name : pick.kind === 'tomb' ? `R.I.P. ${pick.tomb.name} — "${pick.tomb.epitaph || 'Gone.'}"`
       : pick.kind === 'door' ? pick.door.name : pick.kind === 'visitor' ? `${g.visit.type.icon} ${g.visit.type.name} at the door`
       : pick.kind === 'responder' ? `${pick.person.kind === 'detective' ? '🕵️' : '🧯'} ${pick.person.title}`
       : pick.kind === 'car' ? '🚗 A car passing the house' : pick.kind === 'mess' ? '🗑️ A disgusting mess'
       : pick.kind === 'house' ? this.houseTitle(pick.side) : 'Swimming Pool';
-    if (!items.length) items.push({ label: g.selected ? `${g.selected.first} can't do anything here` : 'Select a sim first', icon: '🤷', run: () => {} });
+    if (pick.kind === 'floor') title = 'Here';
+    if (!items.length) items.push({ label: me ? `${me.first} can't do anything here` : 'Start a game first', icon: '🤷', run: () => {} });
     this.showPie(items, x, y, title);
   }
 
@@ -210,11 +194,11 @@ export class UI {
     p.innerHTML = `<div class="pieTitle">${esc(title)}</div>`;
     items.forEach((it, i) => {
       const b = document.createElement('button');
-      b.className = 'pieItem' + (it.evil ? ' evil' : '') + (it.god ? ' god' : '') + (it.warn ? ' warn' : '');
+      b.className = 'pieItem' + (it.evil ? ' evil' : '') + (it.sabotage ? ' god' : '') + (it.warn ? ' warn' : '');
       b.innerHTML = `<span>${it.icon}</span> ${esc(it.label)}${it.note ? `<small>${esc(it.note)}</small>` : ''}`;
       b.disabled = !!it.disabled;
-      if (it.disabled) b.title = it.note && it.note.startsWith('🔒') ? it.note : it.god ? 'Not enough malice' : it.note;
-      b.addEventListener('click', e => { e.stopPropagation(); if (it.disabled) return; if (!it.god) this.game.sfx('click'); it.run(); this.closePie(); this.refresh(); });
+      if (it.disabled) b.title = it.note || '';
+      b.addEventListener('click', e => { e.stopPropagation(); if (it.disabled) return; this.game.sfx('click'); it.run(); this.closePie(); this.refresh(); });
       p.appendChild(b);
     });
     p.classList.remove('hidden');
@@ -261,7 +245,8 @@ export class UI {
     const day = Math.floor(g.clock / 1440) + 1, h = Math.floor((g.clock / 60) % 24), m = Math.floor(g.clock % 60);
     this.$('clock').textContent = `Day ${day} · ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     this.$('score').textContent = `☠ ${g.score}`;
-    this.$('malice').textContent = g.contract ? `😈 ${Math.floor(g.malice)}` : '😈 ∞';
+    this.$('cash').textContent = g.player ? `💵 $${Math.floor(g.cash)}` : '';
+    this.$('cash').classList.toggle('broke', g.player && g.cash < 0);
     this.$('money').textContent = `💰 ${g.profile.money}`;
     document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('active', Number(b.dataset.speed) === g.speed));
     this.$('freeWillBtn').textContent = `Free will: ${g.freeWill ? 'ON' : 'OFF'}`;
@@ -302,12 +287,12 @@ export class UI {
         <div class="cardHead"><b>${i + 1}. ${esc(c.title)}</b><span class="stars">${stars(got)}</span></div>
         <div class="client">Client: ${esc(c.client)}</div>
         <div class="brief">${open ? esc(c.brief) : 'Complete the previous contract to unlock.'}</div>${open ? req : ''}
-        <div class="cardFoot"><span>⏳ ${c.days}d · 🤝 ${c.slots} · 💰 ${c.pay}</span>
+        <div class="cardFoot"><span>⏳ ${c.days}d · 💵 $${c.cash} · 💰 ${c.pay}</span>
           ${open ? `<button data-play="${i}">${got ? 'Replay' : 'Take the job'}</button>` : '<span>🔒</span>'}</div>
       </div>`;
     }).join('');
     const free = `<div class="card free"><div class="cardHead"><b>∞ Free Play</b></div>
-      <div class="brief">Endless random households, every trap unlocked, no suspicion. Pays 💰10 per kill.</div>
+      <div class="brief">Endless random households, every tool unlocked, no suspicion. You still need a job. Pays 💰10 per kill.</div>
       <div class="cardFoot"><span></span><button data-play="free">Play</button></div></div>`;
     const market = SHOP.map(item => {
       const owned = p.owned.includes(item.id);
@@ -323,26 +308,32 @@ export class UI {
     this.show('board');
   }
 
-  // Before a contract: show the targets' intel and let the player pick their crew.
+  // Before a contract (or free play): show the targets' intel and let the player pick who they'll be.
   showCrewPicker(index) {
-    const g = this.game, c = CONTRACTS[index];
+    const g = this.game, c = index === 'free' ? null : CONTRACTS[index];
     const owned = r => !r.locked || g.profile.owned.includes('recruit:' + r.id);
-    const last = (g.profile.crew || []).filter(id => owned(ROSTER.find(r => r.id === id)));
-    this.pick = { index, chosen: last.slice(0, c.slots) };
+    const last = ROSTER.find(r => r.id === g.profile.character && owned(r));
+    this.pick = { index, chosen: last ? last.id : null };
     const chips = (traits, persona) => `<span class="trait persona">${PERSONALITIES[persona].icon} ${esc(PERSONALITIES[persona].name)}</span>` +
       traits.map(t => `<span class="trait" title="${esc(TRAITS[t].desc)}">${TRAITS[t].icon} ${esc(TRAITS[t].name)}</span>`).join('');
-    const intel = c.targets.map((t, i) => {
+    const intel = c ? c.targets.map((t, i) => {
       const obj = c.objectives.find(o => o.who === i);
       return `<div class="intel"><b>🎯 ${esc(t.name)}</b>${obj ? ` <span class="must">must ${esc(CAUSE_VERB[obj.cause])}</span>` : ''}<div class="traits">${chips(t.traits, t.personality)}</div></div>`;
-    }).join('');
-    const roster = ROSTER.map(r => `<div class="recruit ${owned(r) ? '' : 'locked'}" data-recruit="${r.id}">
+    }).join('') : '<div class="intel"><b>🎯 A random household of wicked roommates</b></div>';
+    const roster = ROSTER.map(r => {
+      const job = JOBS[r.id];
+      const skills = SKILLS.filter(([k]) => (r.skills || {})[k]).map(([k, icon]) => `${icon}${r.skills[k]}`).join(' ');
+      return `<div class="recruit ${owned(r) ? '' : 'locked'}" data-recruit="${r.id}">
         <div class="rHead"><b>${esc(r.name)}</b>${owned(r) ? '<span class="tick">✔</span>' : '<span>🔒 black market</span>'}</div>
-        <div class="traits">${chips(r.traits, r.personality)}${r.immortal ? '<span class="trait immortal">♾️ Immortal</span>' : ''}</div><small>${esc(r.pitch)}</small></div>`).join('');
+        <div class="traits">${chips(r.traits, r.personality)}${r.immortal ? '<span class="trait immortal">♾️ Immortal</span>' : ''}</div>
+        <div class="jobLine">💼 ${esc(job.titles[0])} · ${job.home ? 'from home' : esc(job.place)} · ${String(job.start).padStart(2, '0')}:00, ${job.hours}h · 💵 $${job.pay[0]}/shift · ${skills}</div>
+        <small>${esc(r.pitch)}</small></div>`;
+    }).join('');
     this.$('crewBody').innerHTML = `
-      <h1>📋 ${esc(c.title)}</h1><p class="sub">${esc(c.brief)}</p>
+      <h1>${c ? `📋 ${esc(c.title)}` : '∞ Free Play'}</h1><p class="sub">${c ? esc(c.brief) : 'Move into a house full of terrible people. Kill them all before they get you.'}</p>
       <div class="intelRow">${intel}</div>
-      <h2 class="marketTitle">Choose your crew <span class="wallet" id="crewCount"></span></h2>
-      <p class="sub">They move in with the target, follow your orders, and must all make it out alive.</p>
+      <h2 class="marketTitle">Who are you? <span class="wallet" id="crewCount"></span></h2>
+      <p class="sub">You play one roommate. You have a job, rent to pay and skills to learn, and everyone else in the house is out to get you too.${c ? ` You start with 💵 $${c.cash}.` : ''}</p>
       <div class="rosterGrid">${roster}</div>`;
     this.updateCrewPicker();
     this.hide('board');
@@ -350,21 +341,22 @@ export class UI {
   }
 
   updateCrewPicker() {
-    const c = CONTRACTS[this.pick.index];
-    document.querySelectorAll('#crewBody .recruit').forEach(el => el.classList.toggle('chosen', this.pick.chosen.includes(el.dataset.recruit)));
-    this.$('crewCount').textContent = `${this.pick.chosen.length} / ${c.slots}`;
-    this.$('crewGo').disabled = this.pick.chosen.length !== c.slots;
+    document.querySelectorAll('#crewBody .recruit').forEach(el => el.classList.toggle('chosen', this.pick.chosen === el.dataset.recruit));
+    const who = ROSTER.find(r => r.id === this.pick.chosen);
+    this.$('crewCount').textContent = who ? `You are ${who.name}` : 'Pick one';
+    this.$('crewGo').disabled = !who;
   }
 
   renderContract() {
     const g = this.game, el = this.$('contractHud');
     const c = g.contract;
-    if (!c) { this.setHTML(el, g.started ? '<div class="hudTitle">∞ Free Play</div>' : ''); return; }
+    const work = this.careerHtml();
+    if (!c) { this.setHTML(el, g.started ? `<div class="hudTitle">∞ Free Play</div>${work}` : ''); return; }
     const icon = { done: '✅', failed: '❌', pending: '🎯' };
     const objs = c.objectives.map(o => {
       const st = objectiveState(o, g);
       return `<li class="${st}">${icon[st]} ${esc(describeObjective(o, g.sims))}</li>`;
-    }).join('') + `<li>🛡️ Your crew must survive (${g.sims.filter(s => s.role === 'crew').map(s => esc(s.first)).join(', ')})</li>`;
+    }).join('') + `<li>🛡️ ${g.player ? esc(g.player.first) : 'You'} must survive, and pay the rent</li>`;
     const bonus = c.bonus.map(b => `<li class="bonus ${bonusMet(b, g) ? '' : 'missed'}">★ ${esc(describeBonus(b))}</li>`).join('');
     const left = Math.max(0, c.days * 1440 - g.clock);
     const hrs = Math.floor(left / 60);
@@ -374,7 +366,24 @@ export class UI {
       <div class="hudTitle">📋 ${esc(c.title)}</div>
       <div class="deadline ${hrs < 6 ? 'urgent' : ''}">⏳ ${hrs}h ${Math.floor(left % 60)}m left (end of Day ${c.days})</div>
       <ul class="objs">${objs}${bonus}</ul>
-      <div class="susRow"><span>🕵️ Suspicion</span><div class="susTrack"><div class="susFill ${susCls}" style="width:${sus}%"></div><i style="left:50%"></i></div><em>${sus}</em></div>`);
+      <div class="susRow"><span>🕵️ Suspicion</span><div class="susTrack"><div class="susFill ${susCls}" style="width:${sus}%"></div><i style="left:50%"></i></div><em>${sus}</em></div>${work}`);
+  }
+
+  // Job, pay, performance and what's due: the money side of the murder business.
+  careerHtml() {
+    const g = this.game, j = g.job, p = g.player;
+    if (!j || !j.def || !p) return '';
+    const state = j.fired ? '📉 Fired: look for a job at the computer'
+      : j.state === 'away' ? `🚌 At ${esc(j.def.place)} (alibi) until ${String((j.def.start + j.def.hours) % 24).padStart(2, '0')}:00`
+      : j.state === 'going' ? '💼 Catch the bus at the front gate!'
+      : `Next shift ${shiftTime(j)}${j.def.home ? ' (at the computer)' : ''}`;
+    const perf = Math.max(0, Math.round(j.perf));
+    return `<div class="career">
+      <div class="jobRow"><b>💼 ${esc(jobTitle(j))}</b><span>$${shiftPay(j)}/shift</span></div>
+      <div class="perfRow"><span>Performance</span><div class="susTrack"><div class="susFill perf" style="width:${perf}%"></div></div><em>${perf}</em></div>
+      <div class="jobState ${j.state === 'going' ? 'urgent' : ''}">${state}${j.missed ? ` · missed ${j.missed}/3` : ''}</div>
+      <div class="rentRow ${g.cash < RENT ? 'urgent' : ''}">🧾 Rent $${RENT} at midnight${g.cash < 0 ? ` · $${Math.ceil(-g.cash)} in debt!` : ''}</div>
+    </div>`;
   }
 
   showResult() {
@@ -412,9 +421,10 @@ export class UI {
 
   showFreeRecap() {
     const g = this.game;
-    this.$('resultTitle').textContent = 'Household eliminated';
+    const dead = g.player && !g.player.alive;
+    this.$('resultTitle').textContent = dead ? `💀 They got ${g.player.first} first` : 'Household eliminated';
     this.$('resultBody').innerHTML = `${this.newspaper(g.deaths)}
-      <p>Speed bonus: +${g.lastBonus} · Total score: <b>${g.score}</b></p>`;
+      <p>${dead ? '' : `Speed bonus: +${g.lastBonus} · `}Total score: <b>${g.score}</b></p>`;
     this.$('nextBtn').style.display = '';
     this.$('nextBtn').textContent = 'Next household →';
     this.$('retryBtn').style.display = 'none';
@@ -425,17 +435,17 @@ export class UI {
     const g = this.game;
     this.setHTML(this.$('portraits'), g.sims.map(s => {
       const hue = Math.round(s.mood() * 1.2);
-      const cls = 'portrait' + (s === g.selected ? ' sel' : '') + (s.alive ? '' : ' dead');
-      const title = s.alive ? `${s.name} — double-click to focus` : `${s.name} (${s.cause})`;
-      const badge = g.contract ? `<u>${s.role === 'crew' ? '🤝' : '🎯'}</u>` : '';
+      const cls = 'portrait' + (s === g.player ? ' sel' : '') + (s.alive ? '' : ' dead') + (s.status.away ? ' away' : '');
+      const title = !s.alive ? `${s.name} (${s.cause})` : s === g.player ? `${s.name} (you)` : `${s.name} — click to look at them`;
+      const badge = `<u>${s === g.player ? '★' : '🎯'}</u>`;
       const inner = (s.alive ? `<b>${esc(s.first[0])}</b><i style="width:${Math.round(Math.max(0, s.health))}%"></i>` : '<b>💀</b>') + badge;
       return `<div class="${cls}" data-id="${s.id}" title="${esc(title)}" style="background:${hex(s.color)};border-color:${s.alive ? `hsl(${hue},80%,50%)` : '#444'}">${inner}</div>`;
     }).join(''));
   }
 
   renderSimPanel() {
-    const s = this.game.selected, el = this.$('simPanel');
-    if (!s || !s.alive) { this.setHTML(el, '<div class="empty">No one selected.</div>'); return; }
+    const s = this.game.player, el = this.$('simPanel');
+    if (!s || !s.alive) { this.setHTML(el, s ? '<div class="empty">💀 You are dead.</div>' : ''); return; }
     const bar = (label, icon, v, cls) => `<div class="bar"><span class="bl">${icon} ${label}</span><div class="track"><div class="fill ${cls}" style="width:${Math.round(Math.max(0, Math.min(100, v)))}%"></div></div></div>`;
     const st = s.status;
     const flags = [];
@@ -470,15 +480,15 @@ export class UI {
           ${bar('Evil', '😈', s.evil, 'evil')}
         </div>
         <div class="col">
-          <div class="skills">🍳 Cooking ${Math.floor(s.skills.cooking)}/10 · 🔧 Handiness ${Math.floor(s.skills.handiness)}/10</div>
+          <div class="skills">${SKILLS.map(([k, icon, name]) => `<span title="${name}">${icon} ${name} ${Math.floor(s.skills[k] || 0)}</span>`).join('')}</div>
           <div class="relTitle">Relationships</div>${rels || '<div class="empty">Nobody left to hate.</div>'}
         </div>
       </div>`);
   }
 
   renderQueue() {
-    const s = this.game.selected;
-    if (!s || !s.alive) { this.setHTML(this.$('queue'), ''); return; }
+    const s = this.game.player;
+    if (!s || !s.alive || s.status.away) { this.setHTML(this.$('queue'), ''); return; }
     const all = (s.action ? [s.action] : []).concat(s.queue);
     this.setHTML(this.$('queue'), all.map((a, i) => {
       const cls = 'qItem' + (i === 0 && s.action ? ' current' : '') + (a.source === 'auto' ? ' auto' : '');

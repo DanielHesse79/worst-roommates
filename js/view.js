@@ -425,6 +425,7 @@ export class View {
         this.simModels.set(sim.id, m);
       }
       posePose(this, m, sim, dt, time, g.selected === sim);
+      m.root.visible = sim.alive ? !sim.status.away : m.root.visible;
     }
   }
 
@@ -448,6 +449,8 @@ export class View {
         this.overlay.appendChild(el);
         this.labels.set(sim.id, el);
       }
+      el.style.display = sim.status.away ? 'none' : '';
+      if (sim.status.away) continue;
       const y = sim.status.swimming ? 1.3 : 2.05;
       const [sx, sy] = this.project(sim.x, y, sim.z);
       el.style.transform = `translate(${sx}px, ${sy}px)`;

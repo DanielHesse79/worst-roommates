@@ -101,19 +101,29 @@ export const PERSONALITIES = {
   hacker: { name: 'The Hacker', icon: '💻', desc: 'Lives at the computer. Hacks the smart home and makes people playtest his games.', tactics: ['playtest'] },
 };
 
-// Your crew: roommates you plant in the target's house. Each is a different tool.
+// Who you can be. You move into the target's house as one of them, hold down their job, and use
+// their talents (personality tactics, traits, skills) to make the others' deaths look like accidents.
 export const ROSTER = [
-  { id: 'gloria', name: 'Gloria Grandeur', personality: 'narcissist', traits: ['genius', 'paranoid'], pitch: 'Gaslights targets until they stop trusting their own memory — confused sims have far more accidents. Paranoid, so she never falls for your traps.' },
-  { id: 'silas', name: 'Silas Sly', personality: 'schemer', traits: ['hotheaded', 'genius'], pitch: 'Smear campaigns and triangulation turn the household against the target. Wins most fights.' },
-  { id: 'dolly', name: 'Dolly Drama', personality: 'drama', traits: ['paranoid', 'lazy'], pitch: 'Guilt-trips people into cooking for her — even the ones who absolutely should not be near a stove.' },
-  { id: 'adam', name: 'Adam', personality: 'vampire', traits: ['lazy', 'genius'], pitch: 'Can talk anyone to death. A silent treatment tanks their Fun first, then one of his endless stories finishes the job.' },
-  { id: 'asraa', name: 'Asraa Z', personality: 'charmer', traits: ['genius', 'stargazer'], immortal: true,
-    look: 'glam', color: 0x8e1f3d, skin: 0xe0ac69, pitch: 'Dr. of chemistry, expert witness at a law firm, immortal and devastatingly gorgeous — she gets away with everything. Her designer toxins are untraceable (poisonings cost no suspicion), nobody can refuse her drinks, and while she lives in the house suspicion fades twice as fast. One wink and the target follows her anywhere.' },
-  { id: 'daniel', name: 'Daniel', personality: 'hacker', traits: ['genius', 'lazy'], immortal: true, pitch: 'Immortal hacker who mostly makes obscure computer games (they earn Malice). From the computer he can overload the wiring or smart-lock every door — no witnesses.' },
-  { id: 'pete', name: 'Pyro Pete', personality: 'schemer', traits: ['pyro', 'genius'], pitch: 'Lights fireplaces, stokes them, cranks heaters. Knows exactly how close is too close.', locked: true },
-  { id: 'bertha', name: 'Big Bertha', personality: 'drama', traits: ['hotheaded', 'glutton'], pitch: 'A brawler. Throws scenes, throws punches, rarely loses.', locked: true },
-  { id: 'gus', name: 'Gassy Gus', personality: 'vampire', traits: ['glutton', 'genius'], pitch: 'Iron stomach. Feed him the chili and walk him into a small room with the target.', locked: true },
-  { id: 'seance', name: 'Sister Séance', personality: 'narcissist', traits: ['stargazer', 'paranoid'], pitch: 'Reads the stars and the dead. Her dark-arts research raises Doom twice as fast.', locked: true },
+  { id: 'gloria', name: 'Gloria Grandeur', personality: 'narcissist', traits: ['genius', 'paranoid'], skills: { charisma: 4, chemistry: 1 },
+    pitch: 'Influencer. Gaslights targets until they stop trusting their own memory, and confused people have accidents. Paranoid, so nobody poisons her.' },
+  { id: 'silas', name: 'Silas Sly', personality: 'schemer', traits: ['hotheaded', 'genius'], skills: { charisma: 4, handiness: 2 },
+    pitch: 'Used-car salesman. Smear campaigns turn the whole house against the target, and he wins most fights.' },
+  { id: 'dolly', name: 'Dolly Drama', personality: 'drama', traits: ['paranoid', 'lazy'], skills: { charisma: 3, cooking: 1 },
+    pitch: 'Soap-opera extra. Guilt-trips people into cooking for her, even the ones who absolutely should not be near a stove.' },
+  { id: 'adam', name: 'Adam', personality: 'vampire', traits: ['lazy', 'genius'], skills: { charisma: 5, logic: 2 },
+    pitch: 'Telemarketer. Can talk anyone to death: a silent treatment tanks their Fun, then one of his endless stories finishes the job.' },
+  { id: 'asraa', name: 'Asraa Z', personality: 'charmer', traits: ['genius', 'stargazer'], immortal: true, skills: { chemistry: 8, charisma: 6 },
+    look: 'glam', color: 0x8e1f3d, skin: 0xe0ac69, pitch: 'Dr. of chemistry and expert witness at a law firm: the best-paid job in town. Immortal, devastatingly gorgeous, and she gets away with everything. Her designer toxins are untraceable, nobody refuses her drinks, and suspicion fades twice as fast around her.' },
+  { id: 'daniel', name: 'Daniel', personality: 'hacker', traits: ['genius', 'lazy'], immortal: true, skills: { logic: 7, handiness: 3 },
+    pitch: 'Immortal hacker who makes obscure indie games from home (no commute, but no alibi either). From the computer he can overload the wiring or smart-lock every door.' },
+  { id: 'pete', name: 'Pyro Pete', personality: 'schemer', traits: ['pyro', 'genius'], skills: { handiness: 4, chemistry: 2 },
+    pitch: 'Works at the fireworks shop. Lights fireplaces, stokes them, cranks heaters. Knows exactly how close is too close.', locked: true },
+  { id: 'bertha', name: 'Big Bertha', personality: 'drama', traits: ['hotheaded', 'glutton'], skills: { charisma: 3, handiness: 2 },
+    pitch: 'Nightclub bouncer, works nights. Throws scenes, throws punches, rarely loses.', locked: true },
+  { id: 'gus', name: 'Gassy Gus', personality: 'vampire', traits: ['glutton', 'genius'], skills: { cooking: 5, chemistry: 1 },
+    pitch: 'Chili cook with an iron stomach. Eat the chili yourself and walk into a small room with the target.', locked: true },
+  { id: 'seance', name: 'Sister Séance', personality: 'narcissist', traits: ['stargazer', 'paranoid'], skills: { charisma: 3, chemistry: 2 },
+    pitch: 'Works the psychic hotline from home at night. Her dark-arts research raises Doom twice as fast.', locked: true },
 ];
 
 export const FIRST_NAMES = ['Chad', 'Mildred', 'Reginald', 'Delilah', 'Bartholomew', 'Ivy', 'Gordon',

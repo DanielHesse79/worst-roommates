@@ -86,7 +86,17 @@ button { font-family: inherit; }
 .trait.persona { background: #3a1d44; border-color: #8a3aa8; color: #f0d2ff; font-weight: 600; }
 .trait.immortal { background: #3d3510; border-color: #c9a13b; color: #ffe07a; font-weight: 600; }
 .modalBox button:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
-.skills { font-size: 11px; color: var(--dim); margin: 3px 0 6px; }
+.skills { font-size: 11px; color: var(--dim); margin: 3px 0 6px; display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.career { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); font-size: 12px; }
+.career .jobRow { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.career .jobRow span { color: #8fe38a; font-weight: 700; }
+.career .perfRow { display: flex; align-items: center; gap: 6px; }
+.career .perfRow em { width: 26px; text-align: right; font-style: normal; }
+.susFill.perf { background: linear-gradient(90deg, #4f8fbf, #7ad0ff); }
+.career .jobState, .career .rentRow { color: var(--dim); margin-top: 4px; }
+.career .urgent { color: #ff7a5c; font-weight: 700; }
+.recruit .jobLine { font-size: 11px; color: #8fe38a; margin: 4px 0; }
+.portrait.away { opacity: 0.45; }
 .relTitle { font-size: 11px; color: var(--accent); margin-bottom: 2px; }
 .rel { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 2px 0; }
 .rel span { width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -145,7 +155,8 @@ button { font-family: inherit; }
   font-size: 15px; font-weight: 700; cursor: pointer; }
 .modalBox button:hover { filter: brightness(1.15); }
 
-#topbar #malice { color: #d79be8; font-weight: 700; }
+#topbar #cash { color: #8fe38a; font-weight: 700; }
+#topbar #cash.broke { color: #ff6b5a; }
 .logLine.warn { color: #ffb347; font-weight: 600; }
 
 /* pie extras */

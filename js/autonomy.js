@@ -1,4 +1,5 @@
-// Free will: what an idle sim decides to do when the player isn't directing them.
+// Free will: what an idle sim decides to do on their own. The other roommates always have it (and use it
+// against you); your own character only looks after their needs, and knows better than to use what you rigged.
 import { OBJECT_ACTIONS, SIM_ACTIONS, TOMB_ACTIONS, SWIM, FIGHT, WALK, CLEAN } from './interactions.js';
 import { PERSONALITIES } from './data.js';
 
@@ -16,7 +17,14 @@ function reachable(s, def, target, g) {
 function viable(s, g, def, target) {
   if (!def || !target) return false;
   if (def.available && !def.available(s, target, g)) return false;
+  if (rigged(s, target)) return false;
   return reachable(s, def, target, g);
+}
+
+// Nobody uses what they rigged themselves. (What someone else rigged, you don't know about.)
+function rigged(s, o) {
+  if (!o || !o.type || o.rigger !== s.id) return false;
+  return !!(o.sabotaged || o.flour || o.fireworks || o.bomb || o.wobbly || o.poisoned > 0 || o.chili > 0);
 }
 
 function weightedPick(opts) {
@@ -36,7 +44,8 @@ function pickEvil(s, g) {
     const r = s.relWith(other);
     if (r < 10) opts.push({ w: 3, def: simAct('insult'), target: other });
     if (r < (s.has('hotheaded') ? -30 : -60)) opts.push({ w: 1.2, def: FIGHT, target: other });
-    if (r < -40) opts.push({ w: 0.6, def: simAct('drink'), target: other });
+    // Poisoned drinks are for the new roommate; with each other they settle for fists.
+    if (r < -40 && other === g.player) opts.push({ w: 0.6, def: simAct('drink'), target: other });
     // Socially unacceptable: only offered when it applies (asleep, on the loo...), filtered by viable().
     if (r < 0) {
       for (const [id, w] of [['tickle', 0.35], ['airhorn', 0.25], ['whisper', 0.3], ['barge', 0.6], ['chewloud', 0.3], ['stinkhug', 0.4]]) {
@@ -44,9 +53,17 @@ function pickEvil(s, g) {
       }
     }
   }
-  opts.push({ w: 0.3, def: objAct('fridge', 'poison'), target: o('fridge') });
-  opts.push({ w: 0.5, def: objAct('computer', 'darkarts'), target: o('computer') });
+
+  opts.push({ w: 0.2, def: objAct('computer', 'darkarts'), target: o('computer') });
   if (g.isNight) opts.push({ w: 0.6, def: objAct('stereo', 'blast'), target: o('stereo') });
+  // Out to get the new roommate: rig the stove, or take the ladder while they're in the pool.
+  const me = g.player;
+  if (me && me.alive && s.relWith(me) < -40) {
+    opts.push({ w: 0.5, def: objAct('stove', 'npcgas'), target: o('stove') });
+    opts.push({ w: 0.5, def: objAct('fridge', 'poison'), target: o('fridge') });
+    if (me.status.swimming) opts.push({ w: 3, def: objAct('ladder', 'hideladder'), target: g.world.ladder });
+    opts.push({ w: 0.6, def: simAct('drink'), target: me });
+  }
   if (s.has('hotheaded')) opts.push({ w: 0.06, def: objAct('computer', 'insultbikers'), target: o('computer') });
   opts.push({ w: 0.25, def: objAct('fridge', 'fish'), target: o('fridge') });
   opts.push({ w: 0.2, def: objAct('fridge', 'trash'), target: o('fridge') });
@@ -61,7 +78,7 @@ function pickEvil(s, g) {
   if (s.has('stargazer')) opts.push({ w: 0.6, def: objAct('telescope', 'taunt'), target: o('telescope') });
 
   // Personality tactics: manipulation is their favourite hobby.
-  const victims = g.sims.filter(x => x.alive && x !== s && !x.status.swimming && (s.role !== 'crew' || x.role === 'target'));
+  const victims = g.sims.filter(x => x.alive && x !== s && !x.status.swimming && !x.status.away);
   for (const id of PERSONALITIES[s.personality].tactics) {
     const def = simAct(id);
     if (!victims.length || !def) continue;
@@ -161,7 +178,7 @@ function pickWander(s, g) {
 const FOOD = new Set(['snack', 'cook', 'grill', 'pizza']);
 
 export function runAutonomy(s, g, min) {
-  if (!s.alive) return;
+  if (!s.alive || s.status.away) return;
   // A growling stomach interrupts whatever they were doing on their own.
   if (s.action && s.action.source === 'auto' && s.needs.hunger < 12 && !FOOD.has(s.action.def.id) && !s.status.swimming) {
     s.endAction();
@@ -174,6 +191,8 @@ export function runAutonomy(s, g, min) {
   if (s.idle < 8) return;
   s.idle = 0;
   const starving = s.needs.hunger < 20;
-  const choice = (!starving && pickCurious(s, g)) || (!starving && pickEvil(s, g)) || pickNeed(s, g) || pickClean(s, g) || pickWander(s, g);
+  // Your own free will covers needs and chores; the scheming is up to you.
+  const scheming = s !== g.player && !starving;
+  const choice = (scheming && pickCurious(s, g)) || (scheming && pickEvil(s, g)) || pickNeed(s, g) || pickClean(s, g) || pickWander(s, g);
   if (choice) s.enqueue(choice.def, choice.target, 'auto');
 }

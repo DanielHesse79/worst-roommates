@@ -180,8 +180,15 @@ export class Street {
       }
     }
     // Drivers brake for whatever is ahead of them in their lane, so cars queue instead of overlapping.
+    // Oil on the road: a car passing the house may skid into the front garden.
+    const oily = this.game.oilSlick > this.game.clock;
     for (const c of this.cars) {
       if (c.crash) continue;
+      const x = c.mesh.position.x;
+      if (oily && !c.rolled && x > 3 && x < 19) {
+        c.rolled = true;
+        if (Math.random() < 0.3) { this.crash(c); continue; }
+      }
       let gap = Infinity, ahead = null;
       for (const o of this.cars) {
         if (o === c || o.crash || o.lane !== c.lane) continue;

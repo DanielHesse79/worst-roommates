@@ -30,7 +30,8 @@ export class Sim {
     this.immortal = !!(spec && spec.immortal);
     this.needs = { hunger: rand(50, 85), energy: rand(55, 90), hygiene: rand(40, 90), fun: rand(40, 85), social: rand(40, 85), ...(spec && spec.needs) };
     this.health = 100;
-    this.skills = { cooking: Math.floor(rand(0, 3)), handiness: Math.floor(rand(0, 3)), ...(spec && spec.skills) };
+    const some = () => Math.floor(rand(0, 3));
+    this.skills = { cooking: some(), handiness: some(), charisma: some(), chemistry: some(), logic: some(), ...(spec && spec.skills) };
     this.evil = rand(50, 90);
     this.rel = {};
     this.x = 0; this.z = 0;
@@ -60,7 +61,8 @@ export class Sim {
 
   enqueue(def, target, source = 'player') {
     if (source === 'player') {
-      this.queue = this.queue.filter(q => q.source === 'player');
+      // New orders replace free-will plans, but never the shift you're due at.
+      this.queue = this.queue.filter(q => q.source === 'player' || q.source === 'work');
       if (this.action && this.action.source === 'auto') this.endAction();
     }
     if (this.queue.length >= 6) this.queue.pop();
@@ -91,6 +93,12 @@ export class Sim {
   update(dt, min, game) {
     this.decay(min, game);
     if (!this.alive) return;
+    // At work: off the lot, out of harm's way, and nobody can say you did it.
+    if (this.status.away) {
+      this.moving = false;
+      if (this.needs.hunger < 40) this.addNeed('hunger', 0.25 * min); // lunch at work
+      return;
+    }
 
     if (this.status.passedOut > 0) {
       this.status.passedOut -= min;

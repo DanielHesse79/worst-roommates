@@ -1,4 +1,4 @@
-// The black market: spend blood money from contracts on new traps, recruits and permanent upgrades.
+// The black market: spend blood money from contracts on new tools, characters and permanent upgrades.
 import { ROSTER } from './data.js';
 
 const RECRUIT_PRICE = { pete: 150, bertha: 150, gus: 200, seance: 200 };
@@ -10,12 +10,12 @@ export const SHOP = [
   { id: 'fireworks', kind: 'trap', name: 'Fireworks stash', icon: '🎆', price: 200, desc: 'Unlocks fireworks hidden in the fireplace or grill.' },
   { id: 'ghost', kind: 'trap', name: 'Restless spirits', icon: '👻', price: 200, desc: 'Unlocks waking the dead: ghosts that scare the weak to death at night.' },
   { id: 'piranhas', kind: 'trap', name: 'Piranhas', icon: '🐟', price: 250, desc: 'Unlocks stocking the pool with piranhas.' },
-  { id: 'brakes', kind: 'trap', name: 'Brake-line cutters', icon: '🚗', price: 200, desc: 'Unlocks cutting the brakes on passing cars. They crash into the front garden and explode.' },
+  { id: 'brakes', kind: 'trap', name: 'Oil drum', icon: '🛢️', price: 200, desc: 'Unlocks pouring oil on the road: passing cars skid into the front garden and explode.' },
   { id: 'letterbomb', kind: 'trap', name: 'Letter bomb', icon: '📬', price: 250, desc: 'Unlocks posting explosive parcels to the mailbox.' },
-  { id: 'pockets', kind: 'upgrade', name: 'Deep pockets', icon: '👛', price: 150, desc: 'Start every contract with 30 extra Malice.' },
-  { id: 'silent', kind: 'upgrade', name: 'Silent tools', icon: '🤫', price: 200, desc: 'Being seen using a power raises suspicion by 10 instead of 18.' },
+  { id: 'pockets', kind: 'upgrade', name: 'Deep pockets', icon: '👛', price: 150, desc: 'Start every contract with $100 extra cash.' },
+  { id: 'silent', kind: 'upgrade', name: 'Silent tools', icon: '🤫', price: 200, desc: 'Being seen sabotaging something raises suspicion by 8 instead of 15.' },
   { id: 'alibi', kind: 'upgrade', name: 'Airtight alibi', icon: '📝', price: 200, desc: 'Suspicion fades twice as fast.' },
-  { id: 'discount', kind: 'upgrade', name: 'Bulk discount', icon: '🏷️', price: 250, desc: 'All Hand of Fate powers cost 20% less Malice.' },
+  { id: 'discount', kind: 'upgrade', name: 'Bulk discount', icon: '🏷️', price: 250, desc: 'All tools cost 20% less cash.' },
 ];
 
 // Traps that must be bought before they can be used in contracts (free play has everything).

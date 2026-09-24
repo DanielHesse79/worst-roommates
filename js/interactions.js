@@ -1,7 +1,8 @@
 // Every interaction a sim can perform, plus "hand of fate" god actions.
 // Def shape: { id, label, icon, evil?, duration (min | fn), spot(sim,target,game) -> [x,z],
 //   approachSim?, available?, start?, tick?(s,t,g,a,min), finish?, facePos? }
-import { triggerFireworks, openMail, fartCloud, dustExplosion } from './traps.js';
+import { triggerFireworks, openMail, fartCloud, dustExplosion, TRAPS, TOOLS, toolPrice, toolLock, canPlaceFloorTrap } from './traps.js';
+import { spend, rehire } from './career.js';
 import { responderSpot } from './emergency.js';
 import { visitorOutcome } from './visitors.js';
 import { GRID_W } from './data.js';
@@ -32,7 +33,8 @@ function risk(s, base, o, g) {
 // Chance a sim notices something off about food or drink.
 function notices(s, g, paranoidChance) {
   if (s.confused) return false;
-  return Math.random() < (s.has('paranoid') ? paranoidChance : 0) + (g.wary ? 0.35 : 0);
+  const nose = s === g.player ? (s.skills.chemistry || 0) * 0.08 : 0;
+  return Math.random() < (s.has('paranoid') ? paranoidChance : 0) + (g.wary ? 0.35 : 0) + nose;
 }
 // What the target is doing right now (only once they've actually started doing it).
 const doing = (t, ...ids) => !!(t.action && t.action.stage === 'do' && ids.includes(t.action.def.id));
@@ -71,8 +73,46 @@ function lawnFire(g, s, n) {
 }
 function learn(s, skill) {
   const gain = s.has('genius') ? 2 : s.has('lazy') ? 0.5 : 1;
-  s.skills[skill] = Math.min(10, s.skills[skill] + gain);
+  s.skills[skill] = Math.min(10, (s.skills[skill] || 0) + gain);
 }
+// A kitchen fire. With the gas valve loosened, the cook goes up with it; otherwise they jump back in time.
+function kitchenFire(s, o, g, gas, what) {
+  g.world.ignite(o.cells[0][0], o.cells[0][1]);
+  g.sfx('fire');
+  if (gas) {
+    s.status.onFire = 60;
+    g.view.burst(s.x, s.z, 'explosion');
+    g.log(`🔥 The loosened gas valve turns ${s.name}'s ${what} into a fireball, with ${s.first} in it!`, 'evil');
+  } else {
+    s.status.panic = 20;
+    s.status.fleeing = true;
+    s.panicGoal = null;
+    g.log(`🔥 ${s.name}'s ${what} bursts into flames! ${s.first} jumps back just in time.`, 'evil');
+  }
+  s.endAction();
+}
+
+// Your nose (and handiness) can catch a loosened valve that somebody else left for you.
+function smellsGas(s, o, g) {
+  if (s !== g.player || !o.sabotaged || o.rigger === s.id) return false;
+  if (Math.random() > 0.3 + (s.skills.handiness || 0) * 0.07) return false;
+  o.sabotaged = false;
+  g.log(`👃 ${s.first} smells gas. Someone has loosened the ${o.name}'s valve! ${s.first} tightens it and makes a mental note.`, 'warn');
+  return true;
+}
+
+// When one of the others rigs something while you're watching, you get to know about it.
+function youSawThat(g, s, o, what) {
+  const me = g.player;
+  if (me && me !== s && me.alive && g.witnesses(objCells(o)).includes(me)) g.log(`👀 ${me.first} saw ${s.first} ${what}.`, 'warn');
+}
+
+// Skill-building: an hour of practice at the right object.
+const practise = (id, label, icon, skill, duration = 45) => ({
+  id, label, icon, duration, spot: useSpot, available: (s, o) => !o.charred && !o.toppled,
+  tick(s, o, g, a, m) { s.addNeed('fun', -0.05 * m); },
+  finish(s, o, g) { learn(s, skill); if (s === g.player) g.log(`${icon} ${s.first} practises ${skill}. Now ${Math.floor(s.skills[skill])}/10.`, 'dim'); },
+});
 function changeRel(a, b, d) {
   a.rel[b.id] = clamp((a.rel[b.id] || 0) + d, -100, 100);
   b.rel[a.id] = clamp((b.rel[a.id] || 0) + d, -100, 100);
@@ -151,9 +191,10 @@ export const OBJECT_ACTIONS = {
       tick(s, o, g, a, m) { s.addNeed('hunger', (s.has('glutton') ? 2 : 1.6) * m); },
       finish(s, o, g) { if (s.has('lazy') && Math.random() < 0.4) scatterMess(g, s, 1); } },
     { id: 'poison', label: 'Poison the leftovers', icon: '🧪', evil: true, duration: 15, spot: useSpot,
-      available: (s, o) => !o.charred && !o.poisoned,
+      available: (s, o, g) => s !== g.player && !o.charred && !o.poisoned,
       finish(s, o, g) {
-        o.poisoned = 3; o.poisonedBy = s.id;
+        o.poisoned = 3; o.poisonedBy = s.id; o.rigger = s.id;
+        youSawThat(g, s, o, 'put something in the leftovers');
         s.evil = Math.min(100, s.evil + 5);
         g.log(`🧪 ${s.name} laces the leftovers with something foul.`, 'evil');
       } },
@@ -184,20 +225,18 @@ export const OBJECT_ACTIONS = {
   ],
   stove: [
     { id: 'cook', label: 'Cook dinner', icon: '🍳', duration: 40, spot: useSpot, available: (s, o) => !o.charred,
+      start(s, o, g) { smellsGas(s, o, g); },
       tick(s, o, g, a) {
         once(a, 'roll', 15, () => {
           if (o.flour) { dustExplosion(g, s, o); return; }
-          if (Math.random() < risk(s, 0.22 - 0.04 * s.skills.cooking, o, g)) {
-            g.world.ignite(o.cells[0][0], o.cells[0][1]);
-            s.status.onFire = 60;
-            g.view.burst(s.x, s.z, 'explosion');
-            g.log(`🔥 ${s.name}'s cooking bursts into flames, and so does ${s.first}!`, 'evil');
-            g.sfx('fire');
-            s.endAction();
-          }
+          const gas = !!o.sabotaged;
+          if (Math.random() < risk(s, 0.15 - 0.03 * s.skills.cooking, o, g)) kitchenFire(s, o, g, gas, 'cooking');
         });
       },
       finish(s, o, g) { s.addNeed('hunger', 60); learn(s, 'cooking'); g.log(`${s.first} cooks a surprisingly edible meal.`, 'dim'); } },
+    { id: 'npcgas', label: 'Loosen the gas valve', icon: '🔧', evil: true, duration: 8, spot: useSpot,
+      available: (s, o, g) => s !== g.player && !o.charred && !o.sabotaged,
+      finish(s, o, g) { o.sabotaged = true; o.rigger = s.id; youSawThat(g, s, o, 'loosen the gas valve'); } },
     { id: 'bake', label: 'Bake bread', icon: '🍞', duration: 60, spot: useSpot, available: (s, o) => !o.charred,
       tick(s, o, g, a) {
         // Flour in the air plus a gas flame: sabotage makes it certain, clumsy bakers make it likely.
@@ -215,6 +254,7 @@ export const OBJECT_ACTIONS = {
       finish(s, o) { o.lit = 0; } },
   ],
   vanity: [
+    practise('charm', 'Practise charm in the mirror', '💋', 'charisma', 30),
     { id: 'hair', label: 'Do your hair (lots of hairspray)', icon: '💇', duration: 20, spot: useSpot, available: (s, o) => !o.charred,
       tick(s, o, g, a, m) { s.addNeed('hygiene', 1.2 * m); s.addNeed('fun', 0.4 * m); },
       finish(s, o, g) {
@@ -250,16 +290,11 @@ export const OBJECT_ACTIONS = {
   ],
   grill: [
     { id: 'grill', label: 'Grill mystery meat', icon: '🍔', duration: 35, spot: useSpot, available: (s, o) => !o.charred,
-      start(s, o, g) { if (triggerFireworks(g, o)) return false; },
+      start(s, o, g) { if (triggerFireworks(g, o)) return false; smellsGas(s, o, g); },
       tick(s, o, g, a) {
         once(a, 'roll', 12, () => {
-          if (Math.random() < risk(s, 0.22 - 0.03 * s.skills.cooking, o, g)) {
-            g.world.ignite(o.cells[0][0], o.cells[0][1]);
-            g.log(`🔥 The grill erupts in a fireball right in ${s.first}'s face!`, 'evil');
-            g.sfx('fire');
-            s.status.onFire = 30;
-            s.endAction();
-          }
+          const gas = !!o.sabotaged;
+          if (Math.random() < risk(s, 0.15 - 0.03 * s.skills.cooking, o, g)) kitchenFire(s, o, g, gas, 'grill');
         });
       },
       finish(s, o, g) { s.addNeed('hunger', 55); learn(s, 'cooking'); } },
@@ -363,14 +398,18 @@ export const OBJECT_ACTIONS = {
       } },
   ],
   computer: [
+    practise('code', 'Practise coding', '💻', 'logic'),
+    { id: 'jobhunt', label: 'Look for a new job', icon: '📰', duration: 60, spot: useSpot,
+      available: (s, o, g) => s === g.player && g.job && g.job.fired && !o.charred,
+      finish(s, o, g) { rehire(g); g.log(`📰 ${s.first} talks their way back into a job as ${g.job.def.titles[0]}. Try turning up this time.`, 'tool'); } },
     { id: 'scheme', label: 'Scheme online', icon: '😈', duration: 45, spot: useSpot, available: (s, o) => !o.charred,
       tick(s, o, g, a, m) { s.addNeed('fun', 0.8 * m); s.addNeed('social', 0.3 * m); s.evil = Math.min(100, s.evil + 0.1 * m); } },
     { id: 'devgame', label: 'Make an obscure indie game', icon: '🕹️', duration: 90, spot: useSpot,
       available: (s, o) => !o.charred && s.rosterId === 'daniel',
       tick(s, o, g, a, m) { s.addNeed('fun', 0.6 * m); },
       finish(s, o, g) {
-        if (g.contract) g.malice += 20;
-        g.log(`🕹️ ${s.first} releases "${say(GAMES)}". It sells three copies and one refund.${g.contract ? ' (+20 😈)' : ''}`, 'tool');
+        g.cash += 15;
+        g.log(`🕹️ ${s.first} releases "${say(GAMES)}". It sells three copies and one refund. (💵 +$15)`, 'tool');
       } },
     { id: 'insultbikers', label: 'Insult the local biker club online', icon: '🏍️', evil: true, duration: 20, spot: useSpot,
       available: (s, o, g) => !o.charred && !g.gang,
@@ -398,21 +437,25 @@ export const OBJECT_ACTIONS = {
       } },
   ],
   telescope: [
+    practise('studyastro', 'Chart the stars (logic)', '🔭', 'logic', 40),
     { id: 'stargaze', label: 'Stargaze', icon: '🔭', duration: 50, spot: useSpot,
       available: (s, o, g) => g.isNight, whyNot: (s, o, g) => (g.isNight ? null : 'Only at night (20:00–05:00)'),
       tick(s, o, g, a, m) {
         s.addNeed('fun', 1 * m);
-        const p = 0.0002 * (1 + g.doom) * (s.has('stargazer') ? 2 : 1);
+        // A quiet sky until somebody has stirred up enough Doom.
+        const p = g.doom < 2 ? 0 : 0.0002 * g.doom * (s.has('stargazer') ? 2 : 1);
         if (Math.random() < p * m) g.meteorStrike(s);
       } },
     { id: 'taunt', label: 'Taunt the heavens', icon: '🌠', evil: true, duration: 20, spot: useSpot,
       available: (s, o, g) => g.isNight, whyNot: (s, o, g) => (g.isNight ? null : 'Only at night (20:00–05:00)'),
       finish(s, o, g) {
-        if (Math.random() < 0.2 + 0.1 * g.doom) g.meteorStrike(s);
+        if (g.doom >= 2 && Math.random() < 0.1 * g.doom) g.meteorStrike(s);
         else { g.doom += 0.5; g.log(`🌠 ${s.name} shakes a fist at the sky. The sky takes note.`, 'evil'); }
       } },
   ],
   bookshelf: [
+    practise('studychem', 'Study chemistry', '⚗️', 'chemistry'),
+    practise('studydiy', 'Read DIY manuals', '🔧', 'handiness'),
     { id: 'read', label: 'Read a trashy novel', icon: '📖', duration: 40, spot: useSpot, available: (s, o) => !o.charred && !o.toppled,
       tick(s, o, g, a, m) { s.addNeed('fun', 0.8 * m); } },
   ],
@@ -421,7 +464,11 @@ export const OBJECT_ACTIONS = {
       finish(s, o, g) { openMail(g, s, o); } },
   ],
   pool: [SWIM],
-  ladder: [SWIM],
+  ladder: [SWIM,
+    // The other roommates' version: wait until you're in the water, then take the ladder away.
+    { id: 'hideladder', label: 'Hide the pool ladder', icon: '🪜', evil: true, duration: 5, spot: (s, o) => o.use,
+      available: (s, o, g) => s !== g.player && o.present && g.player && g.player.status.swimming,
+      finish(s, o, g) { g.toggleLadder(); youSawThat(g, s, o, 'take the pool ladder'); } }],
 };
 
 for (const list of Object.values(OBJECT_ACTIONS)) {
@@ -516,7 +563,8 @@ function tactics() {
     { id: 'lure', label: 'Lure with a wink', icon: '😘', evil: true, approachSim: true, duration: 5,
       available: (s, t) => s.canUse('lure') && !t.status.follow,
       finish(s, t, g) {
-        t.status.follow = { leader: s, until: g.clock + 150 };
+        // A lured player snaps out of it sooner: you're only human.
+        t.status.follow = { leader: s, until: g.clock + (t === g.player ? 45 : 150) };
         g.log(`😘 ${s.first} winks at ${t.first}. ${t.first} would follow ${s.first} anywhere. Literally anywhere.`, 'evil');
       } },
     { id: 'joke', label: 'Tell a killer joke', icon: '😂', evil: true, approachSim: true, duration: 8,
@@ -733,10 +781,10 @@ export const VISITOR_ACTIONS = [
   { id: 'doorchat', label: 'Chat on the doorstep', icon: '💬', duration: 25, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour', 'salesman'],
     tick(s, t, g, a, m) { s.addNeed('social', 1.2 * m); if (Math.random() < 0.15 * m) g.sfx('blah'); },
     finish(s, t, g) { visitorOutcome(g, 'chat'); } },
-  { id: 'buyknives', label: 'Buy the knife set', icon: '🔪', duration: 10, ...atDoor, kinds: ['salesman'],
+  { id: 'sellcutlery', label: 'Sell him the old cutlery', icon: '🔪', duration: 10, ...atDoor, kinds: ['salesman'],
     finish(s, t, g) {
-      if (g.contract) g.malice += 15;
-      g.log(`🔪 ${s.first} buys the deluxe knife set. Nobody in the house sleeps well tonight.${g.contract ? ' (+15 😈)' : ''}`, 'tool');
+      g.cash += 25;
+      g.log(`🔪 ${s.first} sells the knife salesman the house's old cutlery. Nobody will be able to eat soup. (💵 +$25)`, 'tool');
       visitorOutcome(g, 'bought');
     } },
   { id: 'rudevisit', label: 'Tell them to get off your lawn', icon: '🗯️', evil: true, duration: 5, ...atDoor, kinds: ['witnesses', 'mormons', 'neighbour', 'salesman', 'cop'],
@@ -845,154 +893,157 @@ export const TOMB_ACTIONS = [
     tick(s, t, g, a, m) { s.addNeed('social', 0.8 * m); } },
 ];
 
-// ---------- Hand of Fate: powers that need no sim, paid for with Malice ----------
-
-export const GOD_COST = {
-  ladder: 20, brick: 30, gas: 25, wiring: 25, spoil: 30, rumor: 15, omen: 40,
-  bookshelf: 25, fireworks: 35, piranhas: 40, ghost: 30, chili: 20, letterbomb: 35, cleanup: 10,
-  candles: 20, hairspray: 25, flour: 30, torch: 25, brakes: 40, stereo: 15, bikers: 50,
-};
+// ---------- sabotage: the dirty work, done in person ----------
+// Your character walks over and does it. It costs cash (see TOOLS in traps.js), some jobs need a skill,
+// and anyone who sees it happen remembers. The other roommates have their own, free, nastier versions.
 
 const doorCells = d => (d.axis === 'x' ? [[d.at - 1, d.pos], [d.at, d.pos]] : [[d.pos, d.at - 1], [d.pos, d.at]]);
 const objCells = o => (o.cells.length ? o.cells : [o.use]);
+const objSpot = o => o.use || null;
+const lower = t => t[0].toLowerCase() + t.slice(1);
 
-function godPowers(pick, g) {
-  const out = [];
-  const power = (key, label, icon, cells, run) => out.push({ key, label, icon, cells, run, cost: GOD_COST[key] });
-  const restore = (label, icon, run) => out.push({ label, icon, cells: [], run, cost: 0, restore: true });
-  const ladder = g.world.ladder;
-  const ladderPower = () => {
-    if (ladder.present) power('ladder', 'Remove the ladder', '🪜', [ladder.use, ladder.entry], () => g.toggleLadder());
-    else restore('Put the ladder back', '🪜', () => g.toggleLadder());
-  };
-  const piranhaPower = () => {
-    if (g.world.piranhas) return;
-    power('piranhas', 'Release piranhas', '🐟', [ladder.use, ladder.entry], () => {
-      g.world.piranhas = true;
-      g.log('🐟 Something small and toothy is now swimming in the pool.', 'tool');
-    });
-  };
-
-  if (pick.kind === 'object') {
-    const o = pick.obj;
-    if ((o.type === 'stove' || o.type === 'grill') && !o.charred && !o.sabotaged) {
-      power('gas', 'Loosen the gas valve', '🔧', objCells(o), () => { o.sabotaged = true; g.log(`🔧 The ${o.name}'s gas valve is quietly loosened.`, 'tool'); });
-    }
-    if ((o.type === 'tv' || o.type === 'tub') && !o.charred && !o.sabotaged) {
-      power('wiring', 'Fray the wiring', '⚡', objCells(o), () => { o.sabotaged = true; g.log(`⚡ The wiring near the ${o.name} is mysteriously frayed.`, 'tool'); });
-    }
-    if (o.type === 'fridge' && !o.charred && !o.poisoned) {
-      power('spoil', 'Spoil the leftovers', '🦠', objCells(o), () => { o.poisoned = 2; o.poisonedBy = null; g.log('🦠 The leftovers in the fridge turn a funny colour.', 'tool'); });
-    }
-    if (o.type === 'fridge' && !o.charred && !o.chili) {
-      power('chili', "Swap in Grandma's chili", '🫘', objCells(o), () => { o.chili = 2; g.log("🫘 The fridge now contains a suspicious pot of three-bean chili.", 'tool'); });
-    }
-    if (o.type === 'mailbox' && !g.gang) {
-      power('bikers', "Post a 'FREE BEER' flyer to the local biker club", '🏍️', [], () => {
-        summonGang(g, 'A flyer promising FREE BEER at this address appears on the biker club noticeboard.');
-      });
-    }
-    if (o.type === 'mailbox' && !o.bomb) {
-      power('letterbomb', 'Post a letter bomb', '📬', objCells(o), () => { o.bomb = true; o.flagUp = true; g.log('📬 A parcel arrives. It is ticking, very quietly.', 'tool'); });
-    }
-    if (o.type === 'telescope') {
-      power('omen', 'Summon bad omens', '🌑', [], () => { g.doom += 2; g.log(`🌑 A red comet appears over the neighbourhood. (Doom ${g.doom})`, 'tool'); });
-    }
-    if (o.type === 'bookshelf' && !o.charred && !o.wobbly && !o.toppled) {
-      power('bookshelf', 'Unscrew the wall brackets', '📚', objCells(o), () => { o.wobbly = true; g.log('📚 The bookshelf now leans ever so slightly forward.', 'tool'); });
-    }
-    if ((o.type === 'fireplace' || o.type === 'grill') && !o.charred && !o.fireworks && !(o.lit > 0)) {
-      power('fireworks', 'Hide fireworks inside', '🎆', objCells(o), () => { o.fireworks = true; g.log(`🎆 A bundle of fireworks is tucked into the ${o.name}.`, 'tool'); });
-    }
-    if (o.type === 'candles' && !o.charred && !o.sabotaged) {
-      power('candles', 'Light them and nudge them under the towels', '🕯️', objCells(o), () => {
-        o.sabotaged = true; o.lit = Math.max(o.lit || 0, 240);
-        g.log('🕯️ The scented candles flicker to life on their own and shuffle up against the fluffy towels.', 'tool');
-      });
-    }
-    if (o.type === 'vanity' && !o.charred && !o.sabotaged) {
-      power('hairspray', 'Swap in extra-hold hairspray', '💇', objCells(o), () => { o.sabotaged = true; g.log('💇 The hairspray on the vanity is now EXTRA HOLD. And extra flammable.', 'tool'); });
-    }
-    if (o.type === 'stove' && !o.charred && !o.flour) {
-      power('flour', 'Dust the kitchen with flour', '🍞', objCells(o), () => { o.flour = true; g.log('🍞 A fine haze of flour settles over every surface in the kitchen.', 'tool'); });
-    }
-    if (o.type === 'shed' && !o.charred && !o.sabotaged) {
-      power('torch', "Slit the weed torch's gas hose", '🌿', objCells(o), () => { o.sabotaged = true; g.log("🌿 The weed torch's gas hose now has a neat little slit in it.", 'tool'); });
-    }
-    if (o.type === 'stereo' && !o.charred && !(o.blasting > 0)) {
-      power('stereo', 'Crank it to 11 (nobody to blame)', '🔊', objCells(o), () => {
-        o.blasting = 180; o.dj = null;
-        g.log('🔊 The stereo switches itself on at full volume. Nobody admits to anything.', 'tool');
-      });
-    }
-    if (o.type === 'ladder') { ladderPower(); piranhaPower(); }
-  } else if (pick.kind === 'car') {
-    // Only cars passing the house can be aimed at the front garden.
-    const c = pick.car;
-    if (!c.crash && c.mesh.position.x > -6 && c.mesh.position.x < 28) power('brakes', 'Cut the brake lines', '🚗', [], () => g.crashCar(c));
-  } else if (pick.kind === 'pool') {
-    ladderPower();
-    piranhaPower();
-  } else if (pick.kind === 'tomb' && !pick.tomb.ghost) {
-    const t = pick.tomb;
-    power('ghost', 'Wake the restless spirit', '👻', [], () => { t.ghost = true; g.log(`👻 Something stirs beneath ${t.name}'s grave. It will walk at night.`, 'tool'); });
-  } else if (pick.kind === 'door') {
-    const d = pick.door;
-    if (d.bricked) restore('Knock it back open', '🚪', () => g.toggleDoor(d.id));
-    else power('brick', 'Brick up the doorway', '🧱', doorCells(d), () => g.toggleDoor(d.id));
-  } else if (pick.kind === 'sim' && pick.sim.alive) {
-    const t = pick.sim;
-    power('rumor', `Whisper a rumour about ${t.first}`, '🗣️', [], () => {
-      for (const o of g.sims) if (o.alive && o !== t) changeRel(o, t, -20);
-      t.evil = Math.min(100, t.evil + 5);
-      g.log(`🗣️ Nasty rumours about ${t.name} spread through the house.`, 'tool');
-    });
-  }
-  return out;
+// Anyone watching (roommates, visitors, responders) turns against you; officially, suspicion goes up.
+export function caughtInTheAct(g, s, cells, what) {
+  const seen = g.witnesses(cells).filter(x => x !== s);
+  if (!seen.length) return;
+  g.seenSabotage = true;
+  for (const x of seen) if (x.rel) changeRel(x, s, -30);
+  const msg = `👀 ${seen.map(x => x.first).join(' and ')} saw ${s.first} ${lower(what)}.`;
+  if (g.contract) g.addSuspicion(g.upgrade('silent') ? 8 : 15, `${msg} (+${g.upgrade('silent') ? 8 : 15} suspicion)`);
+  else g.log(msg, 'warn');
 }
 
-// The 🧹 tool: quietly undo your own handiwork before somebody official finds it.
-export function cleanupPower(pick, g) {
-  const w = g.world;
-  const power = (label, cells, run) => ({ key: 'cleanup', label, icon: '🧹', cells, run, cost: GOD_COST.cleanup });
-  if (pick.kind === 'floor') {
+function job(key, label, icon, spot, cells, run, { face = null, time = null, valid = null } = {}) {
+  return {
+    id: 'sab-' + key, key, label, icon, evil: true, sabotage: true, cells,
+    duration: time ?? TOOLS[key].time, spot: (s, t, g) => (typeof spot === 'function' ? spot(g) : spot),
+    facePos: () => face,
+    finish(s, t, g) {
+      if (valid && !valid()) { g.log(`${s.first} can't do that there any more.`, 'dim'); return; }
+      const price = toolPrice(g, key);
+      if (!spend(g, price)) { g.log(`💸 ${s.first} can't afford that ($${price}).`, 'dim'); return; }
+      run(s);
+      if (t && t.type) t.rigger = s.id; // so your own free will knows to keep away from it
+      g.sfx('power');
+      caughtInTheAct(g, s, cells, label);
+    },
+  };
+}
+
+// Planting a floor trap: walk to the tile, put it down, remember not to step on it yourself.
+export function plantDef(g, id, cell) {
+  const t = TRAPS.find(tt => tt.id === id);
+  return job(id, `Plant a ${t.name.toLowerCase()}`, t.icon, cell, [cell], s => {
+    g.world.addTrap(id, cell[0], cell[1], id === 'wax' ? 3 : 1);
+    g.world.trapAt(...cell).owner = s.id;
+    g.log({ wax: `🧽 ${s.first} waxes a patch of floor to a mirror shine.`, beartrap: `🪤 ${s.first} hides a bear trap in the grass.`,
+      peel: `🍌 ${s.first} places a banana peel with loving precision.` }[id], 'tool');
+  }, { valid: () => canPlaceFloorTrap(g, id, ...cell) });
+}
+
+export function sabotageFor(pick, g) {
+  const out = [], w = g.world;
+  const add = d => out.push(d);
+  const ladder = w.ladder;
+  if (pick.kind === 'object') {
+    const o = pick.obj, at = objSpot(o), cells = objCells(o), face = objCenter(o.cells.length ? o : { cells: [o.use] });
+    const opt = { face };
+    if (at) {
+      if ((o.type === 'stove' || o.type === 'grill') && !o.charred && !o.sabotaged) {
+        add(job('gas', 'Loosen the gas valve', '🔧', at, cells, s => { o.sabotaged = true; g.log(`🔧 ${s.first} quietly loosens the ${o.name}'s gas valve.`, 'tool'); }, opt));
+      }
+      if ((o.type === 'tv' || o.type === 'tub') && !o.charred && !o.sabotaged) {
+        add(job('wiring', 'Fray the wiring', '⚡', at, cells, s => { o.sabotaged = true; g.log(`⚡ ${s.first} strips the wiring behind the ${o.name}. Very carefully.`, 'tool'); }, opt));
+      }
+      if (o.type === 'fridge' && !o.charred && !o.poisoned) {
+        add(job('spoil', 'Poison the leftovers', '🧪', at, cells, s => { o.poisoned = 2; o.poisonedBy = s.id; g.log(`🧪 ${s.first} laces the leftovers with something foul.`, 'tool'); }, opt));
+      }
+      if (o.type === 'fridge' && !o.charred && !o.chili) {
+        add(job('chili', "Swap in Grandma's chili", '🫘', at, cells, s => { o.chili = 2; g.log(`🫘 ${s.first} puts a suspicious pot of three-bean chili in the fridge.`, 'tool'); }, opt));
+      }
+      if (o.type === 'mailbox' && !o.bomb) {
+        add(job('letterbomb', 'Post a letter bomb', '📬', at, cells, s => { o.bomb = true; o.flagUp = true; g.log(`📬 ${s.first} slips a quietly ticking parcel into the mailbox and raises the flag.`, 'tool'); }, opt));
+      }
+      if (o.type === 'mailbox' && !(g.oilSlick > g.clock)) {
+        add(job('brakes', 'Pour oil on the road', '🛢️', at, cells, s => {
+          g.oilSlick = g.clock + 180;
+          g.log(`🛢️ ${s.first} pours a can of oil across the road. For the next few hours, passing cars may end up in the front garden.`, 'tool');
+        }, opt));
+      }
+      if (o.type === 'mailbox' && !g.gang) {
+        add(job('bikers', "Post a 'FREE BEER' flyer to the biker club", '🏍️', at, [], s => {
+          summonGang(g, `${s.first} posts a flyer promising FREE BEER at this address to the local biker club.`);
+        }, opt));
+      }
+      if (o.type === 'bookshelf' && !o.charred && !o.wobbly && !o.toppled) {
+        add(job('bookshelf', 'Unscrew the wall brackets', '📚', at, cells, s => { o.wobbly = true; g.log(`📚 ${s.first} unscrews the bookshelf's wall brackets. It leans, ever so slightly.`, 'tool'); }, opt));
+      }
+      if ((o.type === 'fireplace' || o.type === 'grill') && !o.charred && !o.fireworks && !(o.lit > 0)) {
+        add(job('fireworks', 'Hide fireworks inside', '🎆', at, cells, s => { o.fireworks = true; g.log(`🎆 ${s.first} tucks a bundle of fireworks into the ${o.name}.`, 'tool'); }, opt));
+      }
+      if (o.type === 'candles' && !o.charred && !o.sabotaged) {
+        add(job('candles', 'Light them and nudge them under the towels', '🕯️', at, cells, s => {
+          o.sabotaged = true; o.lit = Math.max(o.lit || 0, 240);
+          g.log(`🕯️ ${s.first} lights the scented candles and nudges them right up against the towels.`, 'tool');
+        }, opt));
+      }
+      if (o.type === 'vanity' && !o.charred && !o.sabotaged) {
+        add(job('hairspray', 'Swap in extra-hold hairspray', '💇', at, cells, s => { o.sabotaged = true; g.log(`💇 ${s.first} swaps the hairspray for EXTRA HOLD. Extra flammable.`, 'tool'); }, opt));
+      }
+      if (o.type === 'stove' && !o.charred && !o.flour) {
+        add(job('flour', 'Dust the kitchen with flour', '🍞', at, cells, s => { o.flour = true; g.log(`🍞 ${s.first} shakes a bag of flour into the air. It settles on everything.`, 'tool'); }, opt));
+      }
+      if (o.type === 'shed' && !o.charred && !o.sabotaged) {
+        add(job('torch', "Slit the weed torch's gas hose", '🌿', at, cells, s => { o.sabotaged = true; g.log(`🌿 ${s.first} puts a neat little slit in the weed torch's gas hose.`, 'tool'); }, opt));
+      }
+      // Tidying up after yourself.
+      const fixes = [];
+      if (o.sabotaged) fixes.push(() => { o.sabotaged = false; });
+      if (o.flour) fixes.push(() => { o.flour = false; });
+      if (o.poisoned > 0) fixes.push(() => { o.poisoned = 0; o.untraceable = false; });
+      if (o.chili > 0) fixes.push(() => { o.chili = 0; });
+      if (o.fireworks) fixes.push(() => { o.fireworks = false; });
+      if (o.bomb) fixes.push(() => { o.bomb = false; o.flagUp = false; });
+      if (o.wobbly && !o.toppled) fixes.push(() => { o.wobbly = false; });
+      if (fixes.length) {
+        add(job('cleanup', 'Wipe away the evidence', '🧹', at, cells, s => {
+          fixes.forEach(f => f());
+          g.log(`🧹 ${s.first} wipes the ${o.name} clean of fingerprints, residue and intent.`, 'tool');
+        }, opt));
+      }
+    }
+    if (o.type === 'ladder') pick = { kind: 'pool' };
+  }
+  if (pick.kind === 'pool') {
+    const cells = [ladder.use, ladder.entry], face = [ladder.entry[0] + 0.5, ladder.entry[1] + 0.5];
+    if (ladder.present) add(job('ladder', 'Hide the pool ladder', '🪜', ladder.use, cells, () => g.toggleLadder(), { face }));
+    else add(job('ladder', 'Put the ladder back', '🪜', ladder.use, [], () => g.toggleLadder(), { face }));
+    if (!w.piranhas) {
+      add(job('piranhas', 'Release piranhas', '🐟', ladder.use, cells, s => { w.piranhas = true; g.log(`🐟 ${s.first} tips a bucket of something small and toothy into the pool.`, 'tool'); }, { face }));
+    } else {
+      add(job('cleanup', 'Net the piranhas', '🧹', ladder.use, cells, s => {
+        w.piranhas = false; w.piranhasKnown = false;
+        g.log(`🧹 ${s.first} nets the piranhas and tips them into the neighbour's koi pond.`, 'tool');
+      }, { face, time: 20 }));
+    }
+  } else if (pick.kind === 'tomb' && !pick.tomb.ghost) {
+    const t = pick.tomb, spot = w.nearestWalkable(t.x, Math.min(t.z + 1, 15));
+    add(job('ghost', 'Hold a séance at the grave', '👻', spot, [], s => { t.ghost = true; g.log(`👻 ${s.first} holds a séance over ${t.name}'s grave. Something stirs. It will walk at night.`, 'tool'); }, { face: [t.x + 0.5, t.z + 0.5] }));
+  } else if (pick.kind === 'door') {
+    const d = pick.door, cells = doorCells(d), spot = cells[0], face = [(cells[0][0] + cells[1][0]) / 2 + 0.5, (cells[0][1] + cells[1][1]) / 2 + 0.5];
+    if (d.bricked && !d.hackLocked) add(job('cleanup', 'Knock the wall back out', '🚪', spot, cells, () => g.toggleDoor(d.id), { face, time: 20 }));
+    else if (!d.bricked) add(job('brick', 'Brick up the doorway', '🧱', spot, cells, () => g.toggleDoor(d.id), { face }));
+  } else if (pick.kind === 'floor') {
     const t = w.trapAt(...pick.cell);
     if (t) {
-      return power('Remove the hidden trap', [pick.cell], () => {
+      add(job('cleanup', 'Remove the hidden trap', '🧹', pick.cell, [pick.cell], s => {
         w.removeTrap(t);
-        g.log({ wax: '🧹 The waxed floor is scuffed back to boring, safe dullness.', peel: '🧹 The banana peel goes in the bin, where it belongs.',
-          beartrap: '🧹 The bear trap is pulled out of the lawn and tossed over the fence.' }[t.type], 'tool');
-      });
+        g.log({ wax: `🧹 ${s.first} scuffs the waxed floor back to boring, safe dullness.`, peel: `🧹 ${s.first} puts the banana peel in the bin.`,
+          beartrap: `🧹 ${s.first} pulls the bear trap out of the lawn and hides it in the shed.` }[t.type], 'tool');
+      }));
     }
   }
-  if ((pick.kind === 'pool' || (pick.kind === 'object' && pick.obj.type === 'ladder')) && w.piranhas) {
-    return power('Net the piranhas', [w.ladder.use], () => {
-      w.piranhas = false; w.piranhasKnown = false;
-      g.log("🧹 The piranhas are netted and released into the neighbour's koi pond. Not your problem any more.", 'tool');
-    });
-  }
-  if (pick.kind === 'door' && pick.door.bricked && !pick.door.hackLocked) {
-    const d = pick.door;
-    return power('Knock the wall back out', doorCells(d), () => g.toggleDoor(d.id));
-  }
-  if (pick.kind !== 'object') return null;
-  const o = pick.obj, fixes = [];
-  if (o.sabotaged) fixes.push(() => { o.sabotaged = false; });
-  if (o.flour) fixes.push(() => { o.flour = false; });
-  if (o.poisoned > 0) fixes.push(() => { o.poisoned = 0; o.untraceable = false; });
-  if (o.chili > 0) fixes.push(() => { o.chili = 0; });
-  if (o.fireworks) fixes.push(() => { o.fireworks = false; });
-  if (o.bomb) fixes.push(() => { o.bomb = false; o.flagUp = false; });
-  if (o.wobbly && !o.toppled) fixes.push(() => { o.wobbly = false; });
-  if (!fixes.length) return null;
-  return power(`Wipe down the ${o.name}`, objCells(o), () => {
-    fixes.forEach(f => f());
-    g.log(`🧹 The ${o.name} is wiped clean of fingerprints, residue and intent.`, 'tool');
-  });
-}
-
-export function findPower(pick, game, key) {
-  return godPowers(pick, game).find(p => p.key === key) || null;
+  return out;
 }
 
 // Builds the pie-menu entries for whatever the player clicked.
@@ -1039,19 +1090,20 @@ export function menuFor(pick, sim, game) {
       break;
   }
 
-  for (const p of godPowers(pick, game)) {
-    if (p.key && !game.owns(p.key)) {
-      items.push({ label: p.label, icon: p.icon, god: true, note: '🔒 Buy on the black market', disabled: true, run: () => {} });
-      continue;
+  // Your own dirty work: priced, skill-gated, and flagged if someone is watching.
+  if (sim && sim === game.player && !sim.status.away) {
+    for (const d of sabotageFor(pick, game)) {
+      if (!game.owns(d.key)) {
+        items.push({ label: d.label, icon: d.icon, sabotage: true, note: '🔒 Buy on the black market', disabled: true, run: () => {} });
+        continue;
+      }
+      const price = toolPrice(game, d.key), lock = toolLock(sim, d.key);
+      const seen = d.cells.length ? game.witnesses(d.cells).filter(x => x !== sim) : [];
+      const note = lock || `${price ? `$${price}` : 'free'}${seen.length ? ` · 👀 ${seen.map(x => x.first).join(', ')} watching` : ''}`;
+      const broke = game.cash < price;
+      items.push({ label: d.label, icon: d.icon, evil: true, sabotage: true, note: broke && !lock ? `$${price} · can't afford` : note,
+        disabled: !!lock || broke, warn: seen.length > 0, run: () => sim.enqueue(d, pick.obj || pick.door || pick.tomb || null, 'player') });
     }
-    let note = '';
-    const cost = game.powerCost(p);
-    if (game.contract && !p.restore) {
-      const seen = p.cells.length ? game.witnesses(p.cells) : [];
-      note = `${cost} 😈` + (seen.length ? ` · 👀 ${seen.map(s => s.first).join(', ')} watching` : '');
-    }
-    const broke = game.contract && !p.restore && game.malice < cost;
-    items.push({ label: p.label, icon: p.icon, god: true, note, disabled: broke, warn: note.includes('👀'), run: () => game.godAction(p) });
   }
   return items;
 }

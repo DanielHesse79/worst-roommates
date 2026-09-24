@@ -1,7 +1,8 @@
-// Hidden traps. Floor traps trigger when a sim steps on the tile; object traps are armed
-// flags on furniture (see godPowers in interactions.js) that trigger when the object is used.
+// Hidden traps. Floor traps trigger when a sim steps on the tile; object traps are armed flags on
+// furniture (see sabotageFor in interactions.js) that trigger when the object is used.
 
 import { visitorsNear, visitorOutcome } from './visitors.js';
+import { SKILLS } from './career.js';
 import { outsidersNear, hurtOutsider, setOnFire } from './outsiders.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -24,10 +25,35 @@ export const TRAPS = [
   { id: 'hairspray', name: 'Extra-hold hairspray', icon: '💇', target: 'object', desc: 'Swap the hairspray at the vanity. Whoever does their hair next becomes a walking torch near any flame: candles, stove, fireplace, grill.' },
   { id: 'flour', name: 'Flour everywhere', icon: '🍞', target: 'object', desc: 'Dust the kitchen with fine flour. The next person to cook or bake at the stove sets off a dust explosion.' },
   { id: 'torch', name: 'Leaky weed torch', icon: '🌿', target: 'object', desc: "Slit the gas hose on the weed torch in the garden shed. The next gardener goes up along with the weeds." },
-  { id: 'brakes', name: 'Cut brake lines', icon: '🚗', target: 'car', desc: 'Click a passing car. It jumps the kerb, ploughs into the front garden and explodes. Time it well (pausing helps).' },
+  { id: 'brakes', name: 'Oil on the road', icon: '🛢️', target: 'object', desc: 'Pour oil across the road by the mailbox. For a few hours, passing cars may skid into the front garden and explode.' },
 ];
-export const TRAP_COST = { wax: 15, beartrap: 25, peel: 10 };
 export const FLOOR_TRAPS = new Set(['wax', 'beartrap', 'peel']);
+
+// What each job costs in cash, the skill it needs (if any) and how long it takes, in game minutes.
+export const TOOLS = {
+  peel: { price: 5, time: 2 }, wax: { price: 15, time: 8 }, beartrap: { price: 40, time: 10 },
+  bookshelf: { price: 0, time: 10, skill: ['handiness', 1] }, fireworks: { price: 50, time: 5 },
+  gas: { price: 20, time: 8, skill: ['handiness', 1] }, wiring: { price: 30, time: 15, skill: ['handiness', 3] },
+  spoil: { price: 40, time: 5, skill: ['chemistry', 2] }, chili: { price: 20, time: 5 },
+  letterbomb: { price: 80, time: 10, skill: ['handiness', 4] }, piranhas: { price: 150, time: 10 },
+  ghost: { price: 30, time: 20, skill: ['charisma', 2] }, candles: { price: 0, time: 3 },
+  hairspray: { price: 25, time: 3, skill: ['chemistry', 1] }, flour: { price: 10, time: 6 },
+  torch: { price: 0, time: 5, skill: ['handiness', 1] }, brakes: { price: 30, time: 5 },
+  ladder: { price: 0, time: 5 }, brick: { price: 40, time: 40, skill: ['handiness', 2] },
+  bikers: { price: 20, time: 3 }, cleanup: { price: 0, time: 5 },
+};
+
+export function toolPrice(g, id) {
+  return Math.round((TOOLS[id] ? TOOLS[id].price : 0) * (g.upgrade('discount') ? 0.8 : 1));
+}
+
+// Why this sim can't do the job yet, or null if they can.
+export function toolLock(s, id) {
+  const req = TOOLS[id] && TOOLS[id].skill;
+  if (!req || (s.skills[req[0]] || 0) >= req[1]) return null;
+  const [, icon, name] = SKILLS.find(k => k[0] === req[0]);
+  return `Needs ${icon} ${name} ${req[1]}`;
+}
 
 export function canPlaceFloorTrap(g, id, x, z) {
   const w = g.world;
@@ -36,17 +62,6 @@ export function canPlaceFloorTrap(g, id, x, z) {
   return id === 'wax' ? w.isIndoor(x, z) : !w.isIndoor(x, z);
 }
 
-// A Hand of Fate power (for game.godAction) that plants a floor trap.
-export function floorTrapPower(g, id, x, z) {
-  const t = TRAPS.find(tt => tt.id === id);
-  return {
-    key: id, label: t.name, icon: t.icon, cost: TRAP_COST[id], cells: [[x, z]],
-    run: () => {
-      g.world.addTrap(id, x, z, id === 'wax' ? 3 : 1);
-      g.log({ wax: '🧽 A patch of floor is waxed to a mirror shine.', beartrap: '🪤 Something metallic is hidden in the grass.', peel: '🍌 A banana peel is placed with suspicious precision.' }[id], 'tool');
-    },
-  };
-}
 
 function hurt(g, s, dmg, cause, color) {
   s.health -= dmg;
@@ -64,7 +79,8 @@ function spotted(g, s, chance) {
 export function onEnterCell(g, s) {
   const w = g.world;
   const t = w.trapAt(s.cx, s.cz);
-  if (t) {
+  // You know where you put your own traps.
+  if (t && t.owner !== s.id) {
     if (t.type === 'wax') {
       if (spotted(g, s, 0.2)) {
         w.removeTrap(t);

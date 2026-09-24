@@ -5,8 +5,9 @@ import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
 import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H } from './data.js';
 import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress } from './contracts.js';
-import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, floorTrapPower, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf } from './traps.js';
-import { findPower, cleanupPower } from './interactions.js';
+import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf, toolPrice, toolLock } from './traps.js';
+import { sabotageFor, plantDef } from './interactions.js';
+import { initCareer, updateCareer } from './career.js';
 import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
 import { SHOP, LOCKED_TRAPS, contractReward } from './shop.js';
@@ -53,28 +54,31 @@ class Game {
     requestAnimationFrame(t => this.loop(t));
   }
 
-  // contract === null means free play (random household of targets, no suspicion or budget).
-  // In a contract the sims are the fixed targets first, then the player's chosen crew.
-  setup(contract, crewIds = []) {
+  // contract === null means free play (a random household, no suspicion). You play one character
+  // (charId); everyone else is a target who lives, schemes and fights back on their own.
+  setup(contract, charId = null) {
     this.contract = contract;
     this.sims = [];
-    const specs = contract
-      ? [...contract.targets.map(t => ({ ...t, role: 'target' })), ...crewIds.map(id => ({ ...ROSTER.find(r => r.id === id), role: 'crew' }))]
-      : null;
-    const n = specs ? specs.length : Math.min(6, 2 + this.freeLevel);
+    const me = charId ? [{ ...ROSTER.find(r => r.id === charId), role: 'player' }] : [];
+    const targets = contract ? contract.targets.map(t => ({ ...t, role: 'target' }))
+      : Array.from({ length: Math.min(6 - me.length, 1 + this.freeLevel) }, () => ({ role: 'target' }));
+    const specs = [...targets, ...me];
+    const n = specs.length;
     this.world = new World(n);
     for (let i = 0; i < n; i++) {
-      const spec = specs && specs[i];
-      const s = new Sim(this.usedNames, i, spec);
-      s.role = spec ? spec.role : 'target';
-      s.rosterId = spec && spec.role === 'crew' ? spec.id : null;
+      const spec = specs[i];
+      const s = new Sim(this.usedNames, i, spec.name ? spec : null);
+      s.role = spec.role;
+      s.rosterId = spec.role === 'player' ? spec.id : null;
       s.place(...START_SPOTS[i]);
       this.sims.push(s);
     }
+    this.player = this.sims.find(s => s.role === 'player') || null;
+    // They're a nasty bunch, and they don't much like the new roommate either.
     for (const a of this.sims) {
       for (const b of this.sims) {
         if (a.id >= b.id) continue;
-        const r = a.role === 'crew' && b.role === 'crew' ? 40 : Math.round(-30 + Math.random() * 60);
+        const r = a === this.player || b === this.player ? Math.round(-25 + Math.random() * 30) : Math.round(-30 + Math.random() * 60);
         a.rel[b.id] = r; b.rel[a.id] = r;
       }
     }
@@ -88,7 +92,7 @@ class Game {
     // Everyone gets their own bed.
     const beds = [...this.world.objects.values()].filter(o => o.type === 'bed').sort((a, b) => a.bedIndex - b.bedIndex);
     this.sims.forEach((s, i) => { beds[i].owner = s.id; beds[i].name = `${s.first}'s bed`; s.bedId = beds[i].id; });
-    this.selected = this.sims.find(s => s.role === 'crew') || this.sims[0];
+    this.selected = this.player || this.sims[0];
     this.clock = 8 * 60;
     this.doom = 0;
     this.hackLockUntil = 0;
@@ -113,34 +117,44 @@ class Game {
     this.suspicion = 0;
     this.peakSuspicion = 0;
     this.warned = false;
-    this.malice = contract ? contract.malice + (this.upgrade('pockets') ? 30 : 0) : 0;
-    this.godUsed = false;
+    this.seenSabotage = false;
+    this.oilSlick = 0;
+    initCareer(this, charId, (contract ? contract.cash : 200) + (this.upgrade('pockets') ? 100 : 0));
     if (contract && contract.setup) contract.setup(this);
   }
 
-  startContract(index, crewIds = this.crewIds || []) {
+  startContract(index, charId = this.charId) {
     this.contractIndex = index;
-    this.crewIds = crewIds;
-    this.profile.crew = crewIds;
+    this.charId = charId;
+    this.profile.character = charId;
     saveProgress(this.profile);
-    this.setup(CONTRACTS[index], crewIds);
+    this.setup(CONTRACTS[index], charId);
     this.begin();
     const c = this.contract;
     this.log(`📋 CONTRACT: ${c.title} — ${c.brief}`, 'tool');
+    this.introduceJob();
     this.log(`💡 ${c.hint}`, 'dim');
   }
 
-  startFreePlay() {
+  startFreePlay(charId = this.charId) {
     this.contractIndex = null;
+    this.charId = charId;
     this.freeLevel++;
-    this.setup(null);
+    this.setup(null, charId);
     this.begin();
-    this.log(`Free play: ${this.sims.length} wicked sims move in. Kill them all.`, 'tool');
+    this.log(`Free play: you move in with ${this.sims.length - 1} wicked roommates. Kill them all, and don't let them get you first.`, 'tool');
+    this.introduceJob();
+  }
+
+  introduceJob() {
+    const j = this.job, p = this.player;
+    if (!j || !j.def || !p) return;
+    this.log(`💼 You are ${p.name}, ${j.def.titles[0]}. Shifts ${String(j.def.start).padStart(2, '0')}:00 for ${j.def.hours}h pay $${j.def.pay[0]}. Rent is $40 a night. 💵 You start with $${this.cash}.`, 'tool');
   }
 
   retry() {
-    if (this.contractIndex !== null && this.contractIndex !== undefined) this.startContract(this.contractIndex, this.crewIds);
-    else { this.freeLevel--; this.startFreePlay(); }
+    if (this.contractIndex !== null && this.contractIndex !== undefined) this.startContract(this.contractIndex, this.charId);
+    else { this.freeLevel--; this.startFreePlay(this.charId); }
   }
 
   begin() {
@@ -160,7 +174,6 @@ class Game {
 
   owns(key) { return !this.contract || !LOCKED_TRAPS.has(key) || this.profile.owned.includes(key); }
   upgrade(id) { return !!this.contract && this.profile.owned.includes(id); }
-  powerCost(p) { return p.restore ? 0 : Math.round(p.cost * (this.upgrade('discount') ? 0.8 : 1)); }
 
   buy(id) {
     const item = SHOP.find(i => i.id === id);
@@ -186,12 +199,12 @@ class Game {
 
   // ---------- Hand of Fate ----------
 
-  // Awake, non-swimming sims in the same room (or both outdoors) within 7 cells of any of the cells,
+  // Awake, non-swimming sims (not at work) in the same room (or both outdoors) within 7 cells of any of the cells,
   // plus any visitors at the door (they peer through every window) and emergency responders on the lot.
   witnesses(cells) {
     const w = this.world;
     const seen = this.sims.filter(s => {
-      if (!s.alive || s.status.passedOut > 0 || s.status.swimming) return false;
+      if (!s.alive || s.status.passedOut > 0 || s.status.swimming || s.status.away) return false;
       const a = s.action;
       if (a && a.stage === 'do' && (a.def.id === 'sleep' || a.def.id === 'nap')) return false;
       const room = w.roomAt(s.cx, s.cz);
@@ -208,28 +221,6 @@ class Game {
   annoyNeighbours(amount) { for (const side of SIDES) annoyNeighbour(this, side, amount); }
   pleaseNeighbour(side, amount, msg) { pleaseNeighbour(this, side, amount, msg); }
   endInvestigation(msg) { return endInvestigation(this, msg); }
-
-  godAction(p) {
-    if (this.result) return;
-    if (p.restore) { p.run(); return; }
-    if (p.key && !this.owns(p.key)) {
-      this.log('🔒 That trap has to be bought on the black market first.', 'dim');
-      return;
-    }
-    const cost = this.powerCost(p);
-    if (this.contract && this.malice < cost) {
-      this.log(`Not enough malice (${cost} needed). Deaths and patience earn more.`, 'dim');
-      return;
-    }
-    const seen = p.cells.length ? this.witnesses(p.cells) : [];
-    p.run();
-    this.sfx('power');
-    if (!this.contract) return;
-    this.malice -= cost;
-    this.godUsed = true;
-    if (seen.length) this.addSuspicion(this.upgrade('silent') ? 10 : 18, `👀 ${seen.map(s => s.first).join(' and ')} saw something that can't be explained.`);
-    else this.addSuspicion(this.upgrade('silent') ? 1 : 3);
-  }
 
   // deferFail: let the caller decide whether hitting 100 ends the contract (a finishing kill still counts).
   addSuspicion(v, msg, deferFail) {
@@ -255,23 +246,25 @@ class Game {
   piranhaBite(sim, min) { return piranhaBite(this, sim, min); }
   fartCloud(sim) { fartCloud(this, sim); }
 
-  // Place the trap armed in the palette on whatever was clicked. Returns false if it doesn't fit there.
+  // The tool armed in the toolkit bar, used on whatever was clicked: your character walks over and does
+  // it. Returns false if that tool doesn't fit there.
   placeTrap(id, pick) {
-    if (!pick) return false;
-    if (id === 'cleanup') {
-      const p = cleanupPower(pick, this);
-      if (!p) return false;
-      this.godAction(p);
-      return true;
-    }
+    const p = this.player;
+    if (!pick || !p || !p.alive || p.status.away) return false;
+    let def = null, target = null;
     if (FLOOR_TRAPS.has(id)) {
       if (pick.kind !== 'floor' || !canPlaceFloorTrap(this, id, pick.cell[0], pick.cell[1])) return false;
-      this.godAction(floorTrapPower(this, id, pick.cell[0], pick.cell[1]));
-      return true;
+      def = plantDef(this, id, pick.cell);
+      target = { cell: pick.cell };
+    } else {
+      def = sabotageFor(pick, this).find(d => d.key === id);
+      target = pick.obj || pick.door || pick.tomb || null;
     }
-    const p = findPower(pick, this, id);
-    if (!p) return false;
-    this.godAction(p);
+    if (!def) return false;
+    const lock = toolLock(p, id), price = toolPrice(this, id);
+    if (lock) this.ui.toast(`${def.icon} ${lock}`);
+    else if (this.cash < price) this.ui.toast(`💸 Not enough cash: $${price} needed`);
+    else p.enqueue(def, target, 'player');
     return true;
   }
 
@@ -464,7 +457,7 @@ class Game {
     this.deaths.push({ name: sim.name, cause, line, pts, day, role: sim.role, headline: pick(HEADLINES[cause]) });
     this.log(`${info.icon} ${sim.name} ${line} +${pts}${this.combo > 1 ? ` (x${this.combo} combo!)` : ''}`, 'death');
     this.ui.toast(`${info.icon} ${sim.name} died: ${cause}${discovered ? ' — NEW death discovered!' : ''}`);
-    if (this.selected === sim) this.selected = this.sims.find(s => s.alive) || null;
+    if (this.selected === sim) this.selected = null;
 
     let sus = DEATH_SUSPICION[cause];
     if (cause === 'Drowning' && !this.world.ladder.present) sus = 25;
@@ -472,8 +465,13 @@ class Game {
     if (cause === 'Poison' && sim.status.untraceable) sus = 0;
     // Anything that looks like murder, and every fatal fire, gets a detective sent round.
     if (sus >= 10 || cause === 'Fire') requestInvestigation(this, `the death of ${sim.name}`);
+    // Whatever happens while you're at work, you were at work.
+    const alibi = this.player && this.player !== sim && this.player.status.away;
+    if (alibi && sus > 0) {
+      sus = Math.round(sus * 0.3);
+      this.log(`🧾 ${this.player.first} was at ${this.job.def.place} at the time. Watertight alibi.`, 'tool');
+    }
     if (this.contract) {
-      this.malice += 25;
       if (cause === 'Poison' && sim.status.untraceable) {
         this.log(`⚗️ The coroner consults an expert witness: Dr. Asraa Z. Her report says "natural causes". Case closed.`, 'tool');
       }
@@ -486,9 +484,11 @@ class Game {
       this.profile.money += 10;
       saveProgress(this.profile);
     }
-    if (!this.contract && !this.over && this.sims.every(s => !s.alive)) {
+    // Free play ends when the household is gone, or when they get you first.
+    const survivors = this.sims.filter(s => s !== this.player && s.alive);
+    if (!this.contract && !this.over && (!survivors.length || sim === this.player)) {
       this.over = true;
-      this.lastBonus = Math.max(0, Math.round((3 - this.clock / 1440) * 400));
+      this.lastBonus = sim === this.player ? 0 : Math.max(0, Math.round((3 - this.clock / 1440) * 400));
       this.score += this.lastBonus;
       const session = this.session;
       setTimeout(() => { if (this.session === session) this.ui.showFreeRecap(); }, 4200);
@@ -529,7 +529,7 @@ class Game {
     const fp = w.objects.get('fireplace');
     if (fp.lit > 0) {
       fp.lit -= min;
-      if (!fp.charred && Math.random() < (fp.stoked ? 0.01 : 0.0006) * min) {
+      if (!fp.charred && Math.random() < (fp.stoked ? 0.004 : 0.0006) * min) {
         const [x, z] = pick([[11, 1], [11, 3], [12, 1], [12, 3], [12, 2], [10, 2]]);
         if (w.ignite(x, z)) { this.log('🔥 An ember leaps out of the fireplace and catches the rug!', 'evil'); this.sfx('fire'); }
       }
@@ -566,7 +566,9 @@ class Game {
     this.clock += min;
     this.updateHazards(min);
     for (const s of this.sims) if (s.alive) s.update(gdt, min, this);
-    if (this.freeWill) for (const s of this.sims) runAutonomy(s, this, min);
+    // The others always do as they please; free will only decides whether you look after yourself.
+    for (const s of this.sims) if (s !== this.player || this.freeWill) runAutonomy(s, this, min);
+    updateCareer(this, min);
     for (const m of this.meteors) {
       m.t += gdt;
       if (m.t >= m.dur) {
@@ -592,7 +594,6 @@ class Game {
       this.log('🔓 The smart locks click open again. Nobody can explain it.', 'dim');
     }
     if (this.contract && !this.result) {
-      this.malice += 2 * min / 60;
       // Airtight alibi and a resident legal expert (Asraa Z) each double how fast suspicion fades.
       const lawyer = this.sims.some(s => s.rosterId === 'asraa' && s.alive);
       const fade = 0.5 * (this.upgrade('alibi') ? 2 : 1) * (lawyer ? 2 : 1);
