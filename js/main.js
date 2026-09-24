@@ -406,7 +406,7 @@ class Game {
     const tomb = this.world.addTombstone(cx, cz, { id: p.id, name }, cause);
     tomb.epitaph = kind === 'biker' ? 'Rode hard. Died harder. Nobody came.' : kind === 'detective' ? 'Case closed.' : pick(EPITAPHS);
     this.view.spawnReaper(p);
-    this.sfx('death');
+    this.sfx('murder');
     this.collateral++;
     const info = CAUSES[cause] || CAUSES.Fight;
     this.log(`💀 ${name} ${OUTSIDER_DEATHS[cause] || pick(info.lines)} (Collateral damage: ${name} was never on the list.)`, 'death');
@@ -550,7 +550,7 @@ class Game {
     const tomb = this.world.addTombstone(sim.cx, sim.cz, sim, cause);
     tomb.epitaph = pick(EPITAPHS);
     this.view.spawnReaper(sim);
-    this.sfx('death');
+    this.sfx('murder');
     const session = this.session;
     setTimeout(() => { if (this.session === session) this.log(`💀 The Grim Reaper: ${pick(REAPER_QUIPS)}`, 'dim'); }, 1200);
 

@@ -5,17 +5,17 @@ const MUTE_KEY = 'worst-roommates-muted';
 const VOLUME_KEY = 'worst-roommates-volume';
 const AMBIENT_KEY = 'worst-roommates-ambience';
 const MUSIC_KEY = 'worst-roommates-music';
-const MIN_GAP = { blah: 1.1, punch: 0.22, click: 0.06, fire: 0.6, splash: 0.4, fart: 1, death: 0.3, explosion: 0.3, knock: 1.2, siren: 2.4, police: 2.0, engine: 0.9 };
+const MIN_GAP = { blah: 1.1, punch: 0.22, click: 0.06, fire: 0.6, splash: 0.4, fart: 1, death: 0.3, explosion: 0.3, murder: 0.3, tv: 3, knock: 1.2, siren: 2.4, police: 2.0, engine: 0.9 };
 
 // Recorded variants per sound: name.mp3, name-2.mp3, ... A random one plays each time.
 const SAMPLE_BANK = {
-  punch: 3, slip: 4, death: 1, ghost: 4, zap: 1, explosion: 1, meteor: 4, fire: 4, siren: 4, police: 4,
+  punch: 3, slip: 4, death: 1, murder: 1, tv: 1, ghost: 4, zap: 1, explosion: 1, meteor: 4, fire: 4, siren: 4, police: 4,
   gulp: 3, crash: 2, snap: 2, fart: 4, paper: 3, splash: 4, fail: 2, scream: 4, win: 4, knock: 4,
 };
-const SAMPLE_GAIN = { siren: 0.45, police: 0.4, ghost: 0.6, meteor: 0.6, fire: 0.6, knock: 0.8 };
+const SAMPLE_GAIN = { tv: 0.55, siren: 0.45, police: 0.4, ghost: 0.6, meteor: 0.6, fire: 0.6, knock: 0.8 };
 const DEFAULT_GAIN = 0.7;
 const LOOPED = new Set(['siren', 'police']); // chained back to back while the vehicle is moving
-const STINGS = new Set(['win', 'fail', 'death']); // music: never pitch-shifted
+const STINGS = new Set(['win', 'fail', 'death', 'murder']); // music: never pitch-shifted
 // Background loops: birds by day, crickets by night.
 const AMBIENT_BANK = { day: ['amb-day', 4], night: ['amb-night', 3] };
 const AMBIENT_GAIN = 0.5;
@@ -414,6 +414,7 @@ export const SOUNDS = {
     [440, 415.3, 329.6, 220].forEach((f, i) => a.tone('triangle', f, f * 0.99, t + i * 0.2, 0.4, 0.11));
     a.tone('sine', 110, 55, t + 0.6, 0.9, 0.16, 0.1);
   },
+  murder: (a, t) => SOUNDS.death(a, t), // until murder.mp3 has loaded
   meteor(a, t) { a.tone('sine', 2200, 280, t, 1.5, 0.18, 0.05); },
   fire(a, t) { a.noise(t, 0.7, 0.35, 'bandpass', 400, 1600, 0.7); },
   knock(a, t) {

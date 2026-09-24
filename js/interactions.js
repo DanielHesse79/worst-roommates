@@ -306,6 +306,7 @@ export const OBJECT_ACTIONS = {
   ],
   tv: [
     { id: 'watch', label: 'Watch TV', icon: '📺', duration: 60, spot: useSpot, available: (s, o) => !o.charred && !o.broken,
+      start(s, o, g) { g.sfx('tv'); },
       tick(s, o, g, a, m) {
         s.addNeed('fun', 0.9 * m);
         once(a, 'roll', 5, () => { if (o.sabotaged && Math.random() < risk(s, 0, o, g)) shock(s, g, 50, 95, 'touches the TV and gets a face full of voltage.'); });

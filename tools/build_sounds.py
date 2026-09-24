@@ -4,7 +4,7 @@ Each clip is trimmed to its first sound event, faded out, level-matched and save
 after the game sound it replaces (punch.mp3, punch-2.mp3, ...). Ambience clips become seamless loops,
 and music becomes a level-matched stereo loop.
 Run from the repository root:  python tools/build_sounds.py   (needs ffmpeg on PATH)
-Name groups to rebuild only those:  python tools/build_sounds.py music
+Name groups or single sounds to rebuild only those:  python tools/build_sounds.py music murder
 """
 import array
 import json
@@ -21,6 +21,8 @@ EFFECTS = {
     'punch': (['cartoon_punch_impact_#1-1790172675044', 'cartoon_punch_impact_#3-1790172675070', 'cartoon_punch_impact_#4-1790172675063'], 0.5, 0.08),
     'slip': (['cartoon_slip_whistle_#1-1790172377758', 'cartoon_slip_whistle_#2-1790172377759', 'cartoon_slip_whistle_#3-1790172377759', 'cartoon_slip_whistle_#4-1790172377760'], 1.0, 0.1),
     'death': (['death'], 4.5, 0.3),
+    'murder': (['murder sound'], 2.0, 0.25),
+    'tv': (['start the TV'], 4.2, 0.5),
     'ghost': (['eerie_ghostly_wail_w_#1-1790172522621', 'eerie_ghostly_wail_w_#2-1790172522647', 'eerie_ghostly_wail_w_#3-1790172522719', 'eerie_ghostly_wail_w_#4-1790172522659'], 1.9, 0.3),
     'zap': (['electric shock'], 1.3, 0.25),
     'explosion': (['explosion'], 3.2, 0.8),
@@ -122,8 +124,8 @@ def music(src, dst, xfade):
 
 
 def main(groups):
-    if 'effects' in groups:
-        for name, (clips, max_len, fade) in EFFECTS.items():
+    for name, (clips, max_len, fade) in EFFECTS.items():
+        if 'effects' in groups or name in groups:
             for i, clip in enumerate(clips):
                 out = os.path.join(DST, f'{name}.mp3' if i == 0 else f'{name}-{i + 1}.mp3')
                 length, gain = effect(os.path.join(SRC, clip + '.mp3'), out, max_len, fade)
