@@ -97,6 +97,7 @@ export class Sim {
     if (this.status.away) {
       this.moving = false;
       if (this.needs.hunger < 40) this.addNeed('hunger', 0.25 * min); // lunch at work
+      if (this.status.errand > 0 && (this.status.errand -= min) <= 0) game.returnFromErrand(this);
       return;
     }
 

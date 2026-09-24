@@ -1,4 +1,4 @@
-import { TRAITS, CAUSES, PERSONALITIES, ROSTER, HABITS } from './data.js';
+import { TRAITS, CAUSES, PERSONALITIES, ROSTER, HABITS, HOUSE_ROLES } from './data.js';
 import { menuFor } from './interactions.js';
 import { TRAPS, toolPrice, toolLock } from './traps.js';
 import { JOBS, SKILLS, jobTitle, shiftPay, shiftTime } from './career.js';
@@ -295,6 +295,7 @@ export class UI {
     const habits = Object.entries(t.habits || {}).filter(([, c]) => c >= 2).sort((x, y) => y[1] - x[1]).slice(0, 3)
       .map(([key, c]) => { const [id, when] = key.split('|'); return `${HABITS[id]} ${when} <small>(seen ${c}×)</small>`; });
     return `<div class="personCard">
+      ${t.houseRole ? `<div class="pcRow role">${HOUSE_ROLES[t.houseRole.kind].icon} ${esc(HOUSE_ROLES[t.houseRole.kind].verb((g.sims.find(x => x.id === t.houseRole.ward) || {}).first || ''))}. Not on your list. <small>${esc(HOUSE_ROLES[t.houseRole.kind].desc)}</small></div>` : t.role === 'target' ? '<div class="pcRow role">🎯 On your list.</div>' : ''}
       <div class="pcRow"><b>${esc(PERSONALITIES[t.personality].icon)} ${esc(PERSONALITIES[t.personality].name)}</b> ${t.traits.map(x => `${TRAITS[x].icon} ${esc(TRAITS[x].name)}`).join(' · ')}</div>
       <div class="pcRow">Now: ${esc(doing)}</div>
       <div class="pcRow">${states.join('')}</div>
@@ -422,6 +423,9 @@ export class UI {
     const intel = c ? c.targets.map((t, i) => {
       const obj = c.objectives.find(o => o.who === i);
       return `<div class="intel"><b>🎯 ${esc(t.name)}</b>${obj && obj.cause ? ` <span class="must">✨ ideally: ${esc(CAUSE_VERB[obj.cause])}</span>` : ''}<div class="traits">${chips(t.traits, t.personality)}</div></div>`;
+    }).join('') + (c.housemates || []).map(h => {
+      const r = HOUSE_ROLES[h.role], ward = h.ward !== undefined ? c.targets[h.ward].name.split(' ')[0] : '';
+      return `<div class="intel house"><b>${r.icon} ${esc(h.name)}</b> <span class="must">${esc(r.verb(ward))}</span><div class="traits">${chips(h.traits, h.personality)}</div><small>${esc(h.about)} ${esc(r.desc)}</small></div>`;
     }).join('') : '<div class="intel"><b>🎯 A random household of wicked roommates</b></div>';
     const roster = ROSTER.map(r => {
       const job = JOBS[r.id];
@@ -505,6 +509,9 @@ export class UI {
       const w = wishState(o, g);
       const n = new Set(targets.filter(s => !s.alive).map(s => s.cause)).size;
       return `<li class="${w === true ? 'done' : w === false ? 'missed' : 'pending'}">✨ Ideally ${o.n} different ways to die (${n}/${o.n})</li>`;
+    }).join('') + g.sims.filter(s => s.role === 'bystander').map(s => {
+      const r = HOUSE_ROLES[s.houseRole.kind], ward = g.sims.find(x => x.id === s.houseRole.ward);
+      return `<li class="${s.alive ? 'house' : 'failed'}">${s.alive ? r.icon : '💔'} ${esc(s.first)} <small>${esc(r.verb(ward ? ward.first : ''))} · not on the list</small></li>`;
     }).join('') + `<li>🛡️ ${g.player ? esc(g.player.first) : 'You'} must survive, pay the rent and not get caught</li>`;
     const bonus = c.bonus.map(b => `<li class="bonus ${bonusMet(b, g) ? '' : 'missed'}">★ ${esc(describeBonus(b))}</li>`).join('')
       + `<li class="bonus extra">💯 ${g.score - g.scoreAtStart} points so far · extra for a clean job and never being seen</li>`;
@@ -591,7 +598,7 @@ export class UI {
       const hue = Math.round(s.mood() * 1.2);
       const cls = 'portrait' + (s === g.player ? ' sel' : '') + (s.alive ? '' : ' dead') + (s.status.away ? ' away' : '');
       const title = !s.alive ? `${s.name} (${s.cause})` : s === g.player ? `${s.name} (you)` : `${s.name} — click to look at them`;
-      const badge = `<u>${s === g.player ? '★' : '🎯'}</u>`;
+      const badge = `<u>${s === g.player ? '★' : s.houseRole ? HOUSE_ROLES[s.houseRole.kind].icon : '🎯'}</u>`;
       const inner = (s.alive ? `<b>${esc(s.first[0])}</b><i style="width:${Math.round(Math.max(0, s.health))}%"></i>` : '<b>💀</b>') + badge;
       return `<div class="${cls}" data-id="${s.id}" title="${esc(title)}" style="background:${hex(s.color)};border-color:${s.alive ? `hsl(${hue},80%,50%)` : '#444'}">${inner}</div>`;
     }).join(''));

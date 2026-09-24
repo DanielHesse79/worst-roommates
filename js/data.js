@@ -188,6 +188,13 @@ export const HEADLINES = {
   Laughter: ['COMEDIAN "DEVASTATED", ALSO "A LITTLE PROUD"', 'KILLER JOKE CLAIMS ANOTHER VICTIM'],
   'Bad Breath': ['TOILET BRUSH SOUGHT FOR QUESTIONING', 'DENTISTS: "WE SAID BRUSH TWICE A DAY, NOT WITH THAT"', 'MINTY FRESH? CORONER SAYS "NOT EVEN CLOSE"'],
 };
+// Housemates who aren't on the list, and the part they play in a contract (see contracts.js).
+export const HOUSE_ROLES = {
+  guardian: { icon: '🛡️', verb: w => `watches over ${w}`, desc: 'Stays close to them, fixes any sabotage they catch you at, and comes to the rescue.' },
+  hater: { icon: '💢', verb: w => `can't stand ${w}`, desc: 'Would love to see them gone, and happily looks the other way.' },
+  peacekeeper: { icon: '🤫', verb: () => 'wants peace and quiet', desc: 'Breaks up fights, turns the music off and has no patience for drama.' },
+};
+
 // Things worth knowing someone does regularly (shown on their person card once you've seen it twice).
 export const HABITS = {
   cook: '🍳 cooks', grill: '🍖 grills', bake: '🍞 bakes', snack: '🧀 raids the fridge', swim: '🏊 swims', bath: '🛁 takes a bath',

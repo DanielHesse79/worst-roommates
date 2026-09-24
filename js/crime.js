@@ -26,9 +26,13 @@ const say = (g, x, lines) => { if (x.rel) g.dialogue.say(x, 'witness', 2, pick(l
 // If there's nobody else it could be for, it's for them.
 function meantFor(g, x, victim) {
   if (victim) return victim;
+  const ward = x.houseRole && x.houseRole.ward !== null ? g.sims.find(s => s.id === x.houseRole.ward) : null;
+  if (ward && ward.alive) return ward;
   const others = g.sims.filter(s => s.alive && s !== g.player && s !== x);
   if (!others.length) return x;
-  return others.reduce((a, b) => (rel(x, b) < rel(x, a) ? b : a));
+  // Everyone knows who the house's problem is: they assume it's meant for one of the targets.
+  const pool = others.filter(s => s.role === 'target').length ? others.filter(s => s.role === 'target') : others;
+  return pool.reduce((a, b) => (rel(x, b) < rel(x, a) ? b : a));
 }
 
 // How one witness reacts: 'arrest' | 'cover' | 'blackmail' | 'talk' | 'report'.
@@ -43,6 +47,8 @@ function reaction(g, me, x, victim) {
   if (v === x) return { kind: Math.random() < smooth / 2 ? 'talk' : 'report', mine: true };
   const hateThem = rel(x, v), hateYou = rel(x, me);
   if (hateThem <= HATE && hateYou > HATE) return { kind: 'cover', v };
+  // Win someone's trust (and cool their feelings for the victim) and they'll look the other way.
+  if (hateYou >= 50 && hateYou > hateThem + 20) return { kind: 'cover', v, trust: true };
   // They hate you both: whoever they hate more decides it.
   if (hateThem <= HATE) return hateThem < hateYou ? { kind: 'blackmail', v, price: 30 + Math.round((-hateYou - 40) / 2) } : { kind: 'report', v, spite: true };
   return { kind: Math.random() < smooth ? 'talk' : 'report', v };
@@ -73,6 +79,7 @@ export function witnessCrime(g, me, cells, what, { ids = [], victim = null, proo
     } else if (r.kind === 'cover') {
       if (x.rel) bond(x, me, 10);
       g.log(r.fedUp ? `🤫 ${saw}. After everything this house has put them through, they decide they saw nothing.`
+        : r.trust ? `🤝 ${saw}, and decides ${me.first} must have a good reason. Trust is a wonderful thing.`
         : `🤝 ${saw}, and gives a slow nod. ${x.first} has never liked ${r.v.first}. Your secret is safe.`, 'tool');
       say(g, x, [...COVER_LINES, `Make sure it's ${r.v.first}.`]);
     } else if (r.kind === 'blackmail' && !g.ui.choosing) {

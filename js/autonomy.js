@@ -1,6 +1,6 @@
 // Free will: what an idle sim decides to do on their own. The other roommates always have it (and use it
 // against you); your own character only looks after their needs, and knows better than to use what you rigged.
-import { OBJECT_ACTIONS, SIM_ACTIONS, TOMB_ACTIONS, SWIM, FIGHT, WALK, CLEAN } from './interactions.js';
+import { OBJECT_ACTIONS, SIM_ACTIONS, TOMB_ACTIONS, SWIM, FIGHT, WALK, CLEAN, FIX, BREAKUP, PUTBACK } from './interactions.js';
 import { PERSONALITIES } from './data.js';
 
 const objAct = (type, id) => OBJECT_ACTIONS[type].find(d => d.id === id);
@@ -27,6 +27,31 @@ function rigged(s, o) {
   return !!(o.sabotaged || o.flour || o.fireworks || o.bomb || o.wobbly || o.poisoned > 0 || o.chili > 0);
 }
 
+// Housemates with a part to play (contracts.js): a guardian looks after their ward, a peacekeeper keeps
+// the peace. Haters need no special handling: their loathing does the work.
+const riggedState = o => !!(o.sabotaged || o.flour || o.fireworks || o.bomb || (o.wobbly && !o.toppled) || o.poisoned > 0 || o.chili > 0);
+function pickRole(s, g) {
+  const role = s.houseRole;
+  if (!role) return null;
+  const can = (def, target) => (!def.available || def.available(s, target, g)) && reachable(s, def, target, g);
+  if (role.kind === 'guardian') {
+    const ward = g.sims.find(x => x.id === role.ward);
+    if (!ward || !ward.alive) return null;
+    if (ward.status.stuck && !g.world.ladder.present && can(PUTBACK, g.world.ladder)) return { def: PUTBACK, target: g.world.ladder };
+    for (const o of g.world.objects.values()) {
+      if (o.knownBy && o.knownBy.includes(s.id) && riggedState(o) && can(FIX, o)) return { def: FIX, target: o };
+    }
+    const chat = simAct('chat');
+    if (!ward.status.away && !ward.status.swimming && Math.random() < 0.35 && can(chat, ward)) return { def: chat, target: ward };
+  } else if (role.kind === 'peacekeeper') {
+    const fighter = g.sims.find(x => x.alive && x !== s && x.action && x.action.def.id === 'fight' && x.action.stage === 'do');
+    if (fighter && can(BREAKUP, fighter)) return { def: BREAKUP, target: fighter };
+    const stereo = g.world.objects.get('stereo'), stop = objAct('stereo', 'stopmusic');
+    if ((stereo.blasting > 0 || (g.isNight && stereo.playing > 0)) && can(stop, stereo)) return { def: stop, target: stereo };
+  }
+  return null;
+}
+
 function weightedPick(opts) {
   const total = opts.reduce((a, o) => a + o.w, 0);
   let r = Math.random() * total;
@@ -43,7 +68,9 @@ function pickEvil(s, g) {
     if (!other.alive || other === s || other.status.swimming) continue;
     const r = s.relWith(other);
     if (r < 10) opts.push({ w: 3, def: simAct('insult'), target: other });
-    if (r < (s.has('hotheaded') ? -30 : -60)) opts.push({ w: 1.2, def: FIGHT, target: other });
+    // A hater would rather someone else did it: they sneer at their target, but never throw the first punch.
+    const holdsBack = s.houseRole && s.houseRole.kind === 'hater' && s.houseRole.ward === other.id;
+    if (r < (s.has('hotheaded') ? -30 : -60) && !holdsBack) opts.push({ w: 1.2, def: FIGHT, target: other });
     // Poisoned drinks are for the new roommate; with each other they settle for fists.
     if (r < -40 && other === g.player) opts.push({ w: 0.6, def: simAct('drink'), target: other });
     // Socially unacceptable: only offered when it applies (asleep, on the loo...), filtered by viable().
@@ -100,9 +127,11 @@ function pickEvil(s, g) {
 function pickNeed(s, g) {
   const n = s.needs;
   const o = id => g.world.objects.get(id);
+  // Lowest need first, except that a rumbling stomach beats boredom every time.
+  const urgency = k => n[k] - (k === 'hunger' && n.hunger < 25 ? 100 : 0);
   const wants = [
     ['hunger', 50], ['energy', 35], ['hygiene', 40], ['social', 45], ['fun', 55],
-  ].filter(([k, th]) => n[k] < th).sort((a, b) => n[a[0]] - n[b[0]]);
+  ].filter(([k, th]) => n[k] < th).sort((a, b) => urgency(a[0]) - urgency(b[0]));
 
   for (const [need] of wants) {
     let cands = [];
@@ -196,7 +225,7 @@ export function runAutonomy(s, g, min) {
   const starving = s.needs.hunger < 20;
   // Your own free will covers needs and chores; the scheming is up to you.
   const scheming = s !== g.player && !starving;
-  const choice = (scheming && pickCurious(s, g)) || (scheming && pickEvil(s, g)) || pickNeed(s, g) || pickClean(s, g) || pickWander(s, g);
+  const choice = pickRole(s, g) || (scheming && pickCurious(s, g)) || (scheming && pickEvil(s, g)) || pickNeed(s, g) || pickClean(s, g) || pickWander(s, g);
   if (!choice) return;
   s.enqueue(choice.def, choice.target, 'auto');
   warnPlayer(s, g, choice);

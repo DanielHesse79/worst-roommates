@@ -502,17 +502,18 @@ export const triedOn = (s, t, id) => (t.wise && t.wise[s.id] && t.wise[s.id][id]
 const pestered = (s, t) => Object.values((t.wise && t.wise[s.id]) || {}).reduce((a, n) => a + n, 0);
 // Each repeat of the same trick on the same person works half as well again.
 const fade = (s, t, id) => 1 / (1 + 0.5 * Math.max(0, triedOn(s, t, id) - 1));
-const WISE_AT = { drink: 1, lovebomb: 1, guilttrip: 2, lure: 2, story: 2, playtest: 2, gaslight: 3, joke: 3, triangulate: 3, smear: 3, breathe: 4 };
+const WISE_AT = { errand: 3, gossip: 3, drink: 1, lovebomb: 1, guilttrip: 2, lure: 2, story: 2, playtest: 2, gaslight: 3, joke: 3, triangulate: 3, smear: 3, breathe: 4 };
 const SEEN_THROUGH = {
   drink: 'The last drink you gave me made me sick. I am not having another.', lovebomb: 'I have seen how this ends. No thanks.',
   guilttrip: 'Cook it yourself.', lure: 'Not falling for that wink again.', story: 'Not this story again. I have heard the prequel.',
   playtest: 'There is no save button. I remember.', gaslight: 'Nice try. I KNOW there was a ladder.', joke: 'Heard it. Not funny the third time.',
+  errand: 'Get your own pizza. I know you just want me out of the house.', gossip: 'You would say anything to start a fight.',
   triangulate: 'You say that about everyone.', smear: 'Nobody believes your rumours any more.', breathe: 'I am holding my breath until you leave.',
 };
 
 // Called as someone steps up to do something nasty to `t`. True if `t` won't have it (the action is off).
 export function seesThrough(s, t, def, g) {
-  if (!def.evil || !t.rel) return false;
+  if ((!def.evil && WISE_AT[def.id] === undefined) || !t.rel) return false;
   const tried = triedOn(s, t, def.id);
   if (WISE_AT[def.id] !== undefined && tried >= WISE_AT[def.id]) {
     changeRel(s, t, -6);
@@ -529,6 +530,34 @@ export function seesThrough(s, t, def, g) {
   m[def.id] = tried + 1;
   return false;
 }
+
+// Who someone likes best in the house (other than `not`), if anyone.
+function favourite(t, g, not) {
+  return g.sims.filter(o => o.alive && o !== t && o !== not && o !== g.player && !o.status.away)
+    .sort((a, b) => t.relWith(b) - t.relWith(a))[0] || null;
+}
+
+// What housemates with a part to play do on their own (see autonomy.js).
+export const FIX = { id: 'fixit', label: 'Undo the sabotage', icon: '🧰', duration: 10, spot: (s, o) => o.use || o.cells[0],
+  finish(s, o, g) {
+    const was = o.sabotaged || o.flour || o.poisoned > 0 || o.fireworks || o.bomb || o.wobbly || o.chili > 0;
+    if (!was) return;
+    o.sabotaged = false; o.flour = false; o.poisoned = 0; o.fireworks = false; o.bomb = false; o.chili = 0;
+    if (!o.toppled) o.wobbly = false;
+    g.log(`🧰 ${s.first} puts the ${o.name} right again, and gives you a long look.`, 'warn');
+  } };
+export const BREAKUP = { id: 'breakup', label: 'Break up the fight', icon: '🕊️', approachSim: true, duration: 2,
+  finish(s, t, g) {
+    const other = t.action && t.action.def.id === 'fight' ? t.action.target : null;
+    for (const x of [t, other]) if (x && x.action && x.action.def.id === 'fight') x.endAction();
+    g.log(`🕊️ ${s.first} wades in and breaks up the fight${other ? ` between ${t.first} and ${other.first}` : ''}. "Not in this house."`, 'warn');
+  } };
+export const PUTBACK = { id: 'putback', label: 'Put the pool ladder back', icon: '🪜', duration: 5, spot: (s, o) => o.use,
+  finish(s, o, g) {
+    if (g.world.ladder.present) return;
+    g.toggleLadder();
+    g.log(`🪜 ${s.first} spots someone stuck in the pool and puts the ladder back. Just in time.`, 'warn');
+  } };
 
 // ---------- manipulation tactics (only sims with the matching personality can use them) ----------
 
@@ -804,6 +833,37 @@ export const SIM_ACTIONS = [
       }
     } },
   FIGHT,
+  // Getting a witness out of the way for a couple of hours. Guardians hate leaving their ward, unless
+  // the ward is asleep.
+  { id: 'errand', label: 'Send them out for pizza ($10)', icon: '🍕', approachSim: true, duration: 4,
+    available: (s, t, g) => s === g.player && !asleep(t) && g.cash >= 10,
+    finish(s, t, g) {
+      const ward = t.houseRole && t.houseRole.ward !== null ? g.sims.find(x => x.id === t.houseRole.ward) : null;
+      const clingy = ward && ward.alive && !asleep(ward) ? 0.5 : 1;
+      const chance = Math.min(0.95, Math.max(0.1, (0.35 + (s.skills.charisma || 0) * 0.06 + t.relWith(s) / 200) * clingy));
+      if (Math.random() > chance) {
+        changeRel(s, t, -4);
+        g.log(`🍕 ${t.first}: "${clingy < 1 ? `And leave ${ward.first} alone with you? No.` : 'Get it yourself.'}"`, 'dim');
+        return;
+      }
+      spend(g, 10);
+      t.endAction();
+      t.queue = [];
+      t.status.away = true;
+      t.status.errand = 120;
+      t.x = 10.5; t.z = -60;
+      g.log(`🍕 ${s.first} hands ${t.first} a tenner for pizza. ${t.first} heads out. Back in about two hours.`, 'tool');
+    } },
+  // Everyone's version of triangulation: tell them what their favourite housemate "said" about them.
+  { id: 'gossip', label: 'Tell them what someone said about them', icon: '🗣️', evil: true, approachSim: true, duration: 8,
+    available: (s, t, g) => !s.canUse('triangulate') && !!favourite(t, g, s),
+    finish(s, t, g) {
+      const fav = favourite(t, g, s);
+      if (!fav) return;
+      changeRel(t, fav, -18 * fade(s, t, 'gossip'));
+      changeRel(s, t, 3);
+      g.log(`🗣️ ${s.first} tells ${t.first} what ${fav.first} "said" about them. ${t.first}'s face goes very still.`, 'evil');
+    } },
   { id: 'drink', label: 'Offer a "special" drink', icon: '🍹', evil: true, approachSim: true, duration: 10,
     finish(s, t, g) {
       if (s.rosterId === 'asraa' && t !== g.player) {
@@ -1136,6 +1196,8 @@ const HINTS = {
   drink: 'Poisons them, unless they notice', note: 'Petty. Lowers their fun', tickle: 'Hurts a little; may start a fight',
   airhorn: 'Could stop a weak heart', whisper: 'Costs them sanity and sleep', barge: 'Humiliates them', chewloud: 'Drives them slowly mad',
   stinkhug: 'Now they smell too', sbd: 'A gas cloud that hurts everyone near but you',
+  errand: 'Out of the house for about two hours. Harder if they are guarding someone awake',
+  gossip: 'Turns them against their favourite housemate',
   breathe: s => (s.status.breath > 0 ? 'Hurts. Worst when they are asleep' : 'Just gross. Brush with the toilet brush first'),
 };
 

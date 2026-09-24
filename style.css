@@ -216,6 +216,9 @@ ul.objs li small { color: var(--dim); }
 .diffRow button.on { opacity: 1; outline: 2px solid #dde8a9; }
 .diffRow small { flex-basis: 100%; color: var(--dim); }
 .hudTitle small { font-size: 14px; }
+ul.objs li.house { color: #b8c7ff; }
+.intel.house small { display: block; color: var(--dim); margin-top: 3px; }
+.personCard .pcRow.role { color: #b8c7ff; font-weight: 600; }
 .choiceBtn { text-align: left; padding: 10px 12px; }
 .choiceBtn small { display: block; font-size: 11px; opacity: 0.75; font-weight: 400; margin-top: 2px; }
 .recruit .jobLine small { color: var(--dim); }

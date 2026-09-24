@@ -3,7 +3,7 @@ import { Sim } from './sim.js';
 import { View } from './view.js';
 import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
-import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H, HABITS } from './data.js';
+import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H, HABITS, HOUSE_ROLES } from './data.js';
 import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet, versusContract, bestKey, starKey, DIFFICULTIES, atDifficulty } from './contracts.js';
 import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf, toolPrice, toolLock } from './traps.js';
 import { sabotageFor, plantDef, seesThrough } from './interactions.js';
@@ -71,7 +71,9 @@ class Game {
     const me = charId ? [{ ...ROSTER.find(r => r.id === charId), role: 'player' }] : [];
     const targets = contract ? contract.targets.map(t => ({ ...t, role: 'target' }))
       : Array.from({ length: Math.min(6 - me.length, 1 + this.freeLevel) }, () => ({ role: 'target' }));
-    const specs = [...targets, ...me];
+    // Housemates who aren't on the list: they live here too, each with a part to play.
+    const housemates = ((contract && contract.housemates) || []).map(h => ({ ...h, houseRole: h.role, role: 'bystander' }));
+    const specs = [...targets, ...housemates, ...me];
     const n = specs.length;
     this.world = new World(n);
     for (let i = 0; i < n; i++) {
@@ -98,6 +100,17 @@ class Game {
       this.sims[i].rel[this.sims[j].id] = v;
       this.sims[j].rel[this.sims[i].id] = v;
     }
+    // A guardian loves the one they look after, a hater loathes them (and the target has no idea quite how
+    // much), a peacekeeper gets on with everyone.
+    specs.forEach((spec, i) => {
+      if (!spec.houseRole) return;
+      const s = this.sims[i], ward = spec.ward !== undefined ? this.sims[spec.ward] : null;
+      s.houseRole = { kind: spec.houseRole, ward: ward ? ward.id : null, about: spec.about };
+      const set = (o, mine, theirs = mine) => { s.rel[o.id] = mine; o.rel[s.id] = theirs; };
+      if (spec.houseRole === 'guardian') set(ward, 70, 40);
+      else if (spec.houseRole === 'hater') set(ward, -70, -20);
+      else for (const o of this.sims) if (o !== s) set(o, 15);
+    });
     // Everyone gets their own bed.
     const beds = [...this.world.objects.values()].filter(o => o.type === 'bed').sort((a, b) => a.bedIndex - b.bedIndex);
     this.sims.forEach((s, i) => { beds[i].owner = s.id; beds[i].name = `${s.first}'s bed`; s.bedId = beds[i].id; });
@@ -312,6 +325,15 @@ class Game {
   }
 
   seesThrough(s, t, def) { return seesThrough(s, t, def, this); }
+
+  // Back from an errand (see the "errand" action), none the wiser.
+  returnFromErrand(s) {
+    s.status.away = false;
+    s.status.errand = 0;
+    s.place(10, 15);
+    s.lastCell = null;
+    this.log(`🍕 ${s.first} comes back with a pizza. Nobody asks what happened while they were out.`, 'dim');
+  }
 
   // The score, like the collection, is kept between sessions.
   addScore(pts) {
@@ -558,7 +580,10 @@ class Game {
     const line = pick(info.lines);
     const discovered = !this.careerCauses.has(cause);
     let pts = 0, wished = false;
-    if (sim !== this.player) {
+    if (sim.role === 'bystander') {
+      this.collateral++;
+      this.addSuspicion(20, `💔 ${sim.first} was never on the list. People will ask why they had to die. (+20 suspicion)`, true);
+    } else if (sim !== this.player) {
       // Every kill scores; a new way of dying scores more, and so does exactly what the client ordered.
       pts = 100;
       if (!this.causes.has(cause)) pts += 75;
@@ -637,6 +662,8 @@ class Game {
       if (hoursLeft > 0) extras.push([`⏱️ ${hoursLeft}h to spare`, hoursLeft * 10]);
       if (this.peakSuspicion < 30) extras.push(['🧼 Clean job (suspicion stayed under 30)', 300]);
       if (!this.seenSabotage) extras.push(['🥷 Nobody ever saw you do it', 200]);
+      const others = this.sims.filter(s => s.role === 'bystander');
+      if (others.length && others.every(s => s.alive)) extras.push(['🕊️ Nobody else in the house got hurt', 200]);
       for (const [, pts] of extras) this.addScore(pts);
       // Personal best for this contract with this character.
       const key = bestKey(this.contract.id, this.charId, this.difficulty), points = this.score - this.scoreAtStart;
