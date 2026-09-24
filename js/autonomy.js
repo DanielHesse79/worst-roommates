@@ -63,6 +63,7 @@ function pickEvil(s, g) {
     opts.push({ w: 0.5, def: objAct('fridge', 'poison'), target: o('fridge') });
     if (me.status.swimming) opts.push({ w: 3, def: objAct('ladder', 'hideladder'), target: g.world.ladder });
     opts.push({ w: 0.6, def: simAct('drink'), target: me });
+    if (s.canUse('breathe') && !(s.status.breath > 0)) opts.push({ w: 0.8, def: objAct('toilet', 'toiletbrush'), target: o('toilet') });
   }
   if (s.has('hotheaded')) opts.push({ w: 0.06, def: objAct('computer', 'insultbikers'), target: o('computer') });
   opts.push({ w: 0.25, def: objAct('fridge', 'fish'), target: o('fridge') });
@@ -85,6 +86,8 @@ function pickEvil(s, g) {
     let target;
     if (id === 'lovebomb') target = victims.filter(v => !v.lovebomb).sort((a, b) => s.relWith(b) - s.relWith(a))[0];
     else if (id === 'story') target = victims.find(v => v.needs.fun < 50);
+    // Toilet breath is saved for the new roommate; the rest of the house only gets the everyday kind.
+    else if (id === 'breathe' && s.status.breath > 0) target = victims.includes(me) ? me : null;
     else target = victims[Math.floor(Math.random() * victims.length)];
     if (target) opts.push({ w: id === 'story' ? 0.5 : 1.3, def, target });
   }

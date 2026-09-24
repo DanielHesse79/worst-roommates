@@ -115,6 +115,7 @@ export class Effects {
       if (roof && fp.lit > 0 && Math.random() < 0.4) this.burst(roof.chimney[0], roof.chimney[2], 'smoke', roof.chimney[1]);
       for (const s of g.sims) if (s.alive && s.status.poisoned > 0 && Math.random() < 0.4) this.burst(s.x, s.z, 'bubbles', 1.5);
       for (const s of g.sims) if (s.alive && !s.status.swimming && s.needs.hygiene < 15 && Math.random() < 0.35) this.burst(s.x, s.z, 'stink', 1.2);
+      for (const s of g.sims) if (s.alive && s.status.breath > 0 && !s.status.away && Math.random() < 0.25) this.burst(s.x, s.z, 'stink', 1.35);
       const stereo = w.objects.get('stereo');
       const music = stereo.charred ? 0 : stereo.blasting > 0 ? 0.8 : stereo.playing > 0 ? 0.35 : 0;
       if (Math.random() < music) this.burst(stereo.cells[0][0] + 0.5, stereo.cells[0][1] + 0.5, 'notes', 1.3);

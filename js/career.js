@@ -11,6 +11,7 @@ export const JOBS = {
   gloria: { place: 'a photo shoot', titles: ['Aspiring Influencer', 'Micro-Influencer', 'Brand Ambassador'], skill: 'charisma', pay: [70, 130, 250], start: 11, hours: 6 },
   silas: { place: 'the used-car lot', titles: ['Used-Car Salesman', 'Sales Manager', 'Dealership Owner'], skill: 'charisma', pay: [90, 140, 210], start: 9, hours: 8 },
   dolly: { place: 'the TV studio', titles: ['Soap Opera Extra', 'Soap Opera Villain', 'Soap Opera Legend'], skill: 'charisma', pay: [70, 120, 200], start: 8, hours: 8 },
+  vincent: { place: 'the discount dental clinic', titles: ['Dental Hygienist', 'Senior Hygienist', 'Head of Oral Hygiene'], skill: 'handiness', pay: [80, 130, 200], start: 8, hours: 7 },
   adam: { place: 'the call centre', titles: ['Telemarketer', 'Senior Telemarketer', 'Call Centre Manager'], skill: 'charisma', pay: [80, 120, 180], start: 9, hours: 8 },
   asraa: { place: 'the law firm', titles: ['Junior Expert Witness', 'Expert Witness', 'Senior Partner'], skill: 'chemistry', pay: [140, 220, 340], start: 9, hours: 7 },
   daniel: { place: 'his desk', home: true, titles: ['Obscure Indie Dev', 'Cult Indie Dev', 'Actual Game Developer'], skill: 'logic', pay: [60, 120, 220], start: 10, hours: 6 },

@@ -61,7 +61,8 @@ export class Dialogue {
       if (!victim) return false;
       this.active.delete(victim.sim.id);
     }
-    const lines = LINES[topic] || LINES[sim.personality] || LINES.chat;
+    const own = sim.rosterId && LINES[`${sim.rosterId}:${topic}`];
+    const lines = (own && (Math.random() < 0.6 || !LINES[topic])) ? own : LINES[topic] || LINES[sim.personality] || LINES.chat;
     const text = exact || this.freshest(lines);
     this.said = [...this.said, text].slice(-RECENT_GLOBAL);
     this.active.set(sim.id, { sim, text, priority, topic, left: 5.5, duration: 5.5 });

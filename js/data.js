@@ -8,7 +8,7 @@ export const MIN_PER_SEC = 5; // game minutes per real second at 1x
 // Every cause must have a finite value, or one death can poison the suspicion meter.
 export const DEATH_SUSPICION = {
   Meteor: 0, Fright: 0, Boredom: 2, Laughter: 2, Fart: 3, Slip: 5, Crushed: 6, Fire: 8, Electrocution: 8, Explosion: 10,
-  Fight: 15, Poison: 22, Drowning: 8, Starvation: 10, Piranhas: 25, 'Bear Trap': 25, 'Letter Bomb': 20, 'Car Crash': 3, 'Biker Gang': 2,
+  Fight: 15, Poison: 22, Drowning: 8, Starvation: 10, Piranhas: 25, 'Bear Trap': 25, 'Letter Bomb': 20, 'Car Crash': 3, 'Biker Gang': 2, 'Bad Breath': 3,
 };
 
 export const HOUSE = { x0: 1, z0: 1, x1: 16, z1: 11 };
@@ -99,6 +99,7 @@ export const PERSONALITIES = {
   vampire: { name: 'The Emotional Vampire', icon: '🧛', desc: 'Drains everyone nearby with silent treatments, guilt trips and stories that never end.', tactics: ['silent', 'guilttrip', 'story'] },
   charmer: { name: 'The Charmer', icon: '😘', desc: 'Impossible to say no to. Lures people anywhere with a wink and tells jokes that could kill.', tactics: ['lure', 'joke', 'lovebomb'] },
   hacker: { name: 'The Hacker', icon: '💻', desc: 'Lives at the computer. Hacks the smart home and makes people playtest his games.', tactics: ['playtest'] },
+  slob: { name: 'The Slob', icon: '🪥', desc: 'Hygiene is a conspiracy. Brushes with the toilet brush, then breathes on people until they drop.', tactics: ['breathe'] },
 };
 
 // Who you can be. You move into the target's house as one of them, hold down their job, and use
@@ -116,6 +117,8 @@ export const ROSTER = [
     look: 'glam', color: 0x8e1f3d, skin: 0xe0ac69, pitch: 'Dr. of chemistry and expert witness at a law firm: the best-paid job in town. Immortal, devastatingly gorgeous, and she gets away with everything: her charisma goes to eleven. Her designer toxins are untraceable, nobody refuses her drinks, and suspicion fades twice as fast around her.' },
   { id: 'daniel', name: 'Daniel', personality: 'hacker', traits: ['genius', 'lazy'], immortal: true, skills: { logic: 7, handiness: 3 },
     pitch: 'Immortal hacker who makes obscure indie games from home (no commute, but no alibi either). From the computer he can overload the wiring or smart-lock every door.' },
+  { id: 'vincent', name: 'Vincent', personality: 'slob', traits: ['glutton', 'lazy'], skills: { handiness: 3, chemistry: 2, cooking: 1 },
+    look: 'slob', color: 0xc9b26b, pitch: 'Dental hygienist at a discount clinic who brushes his teeth with the toilet brush. Every morning. With pride. Fresh from the bowl, his breath floors grown adults one close-up "good morning" at a time, and sleeping roommates get it worst.' },
   { id: 'pete', name: 'Pyro Pete', personality: 'schemer', traits: ['pyro', 'genius'], skills: { handiness: 4, chemistry: 2 },
     pitch: 'Works at the fireworks shop. Lights fireplaces, stokes them, cranks heaters. Knows exactly how close is too close.', locked: true },
   { id: 'bertha', name: 'Big Bertha', personality: 'drama', traits: ['hotheaded', 'glutton'], skills: { charisma: 3, handiness: 2 },
@@ -157,6 +160,7 @@ export const CAUSES = {
   'Car Crash': { icon: '🚗', lines: ['was in the front garden when a car arrived without its brakes.', 'met a hatchback at forty miles an hour. The hatchback won.', 'was flattened by rush hour, which came early and through the fence.'] },
   'Biker Gang': { icon: '🏍️', lines: ['was beaten to a pulp by bikers who had never met them.', 'looked at Knuckles funny. Once.', 'was trampled by a man called Tiny.'] },
   Laughter: { icon: '😂', lines: ['laughed so hard their heart simply gave up.', 'died laughing. Genuinely, finally, completely.', 'heard the punchline and never recovered.'] },
+  'Bad Breath': { icon: '🤢', lines: ['got a "good morning" from two centimetres away and never got another.', 'was breathed on by someone who brushes with the toilet brush.', 'smelled something so foul their heart took early retirement.'] },
 };
 
 // More dark humour: newspaper headlines, gravestone epitaphs and the Reaper's commentary.
@@ -180,6 +184,7 @@ export const HEADLINES = {
   'Car Crash': ['BRAKES FAIL, FENCE FAILS, RESIDENT FAILS', 'DRIVER "JUST WANTED TO SEE THE GARDEN"'],
   'Biker Gang': ['BIKER GANG "JUST PASSING THROUGH", SAYS BIKER GANG', 'LOCAL MAN MEETS HELL\'S GRANNIES. LOCAL MAN LOSES'],
   Laughter: ['COMEDIAN "DEVASTATED", ALSO "A LITTLE PROUD"', 'KILLER JOKE CLAIMS ANOTHER VICTIM'],
+  'Bad Breath': ['TOILET BRUSH SOUGHT FOR QUESTIONING', 'DENTISTS: "WE SAID BRUSH TWICE A DAY, NOT WITH THAT"', 'MINTY FRESH? CORONER SAYS "NOT EVEN CLOSE"'],
 };
 export const EPITAPHS = ['Finally quiet.', 'Still owes rent.', 'Died as they lived: annoying.', 'Loved by no one in particular.',
   'Gone, but not missed.', 'They had it coming.', 'Here lies a terrible roommate.', 'Please do not disturb. Seriously.',

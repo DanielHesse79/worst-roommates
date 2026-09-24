@@ -417,6 +417,13 @@ function handbag(colour) {
   return g;
 }
 
+function toiletBrush() {
+  const g = new THREE.Group();
+  g.add(cyl(0.012, 0.012, 0.34, 0xe8e8e8, 0, 0.02, 0.05));
+  g.add(cyl(0.05, 0.045, 0.09, 0x3b78b8, 0, -0.17, 0.05, 10));
+  return g;
+}
+
 export function simModel(sim) {
   const root = new THREE.Group();
   const body = new THREE.Group();
@@ -484,6 +491,16 @@ export function simModel(sim) {
     const bag = handbag(0x1a1a1f);
     bag.position.y = -0.4;
     armR.add(bag);
+  }
+  if (sim.look === 'slob') {
+    const brush = toiletBrush();
+    brush.position.y = -0.38;
+    armR.add(brush);
+    for (const [x, y, r] of [[0.05, 0.88, 0.045], [-0.07, 0.74, 0.035], [0.02, 0.66, 0.03]]) {
+      const stain = sphere(r, 0x6b5320, x, y, 0.165);
+      stain.scale.z = 0.3;
+      body.add(stain);
+    }
   }
 
   const plumbob = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), mat(0x33ff66, { emissive: 0x22aa44, emissiveIntensity: 0.8, unique: true }));

@@ -257,6 +257,8 @@ export class Sim {
       if (!this.alive) return;
     }
 
+    if (st.breath > 0) st.breath -= min;
+
     if (st.poisoned > 0) {
       st.poisoned -= min;
       this.health -= 1.0 * min;
@@ -326,6 +328,7 @@ export class Sim {
     else if (this.action && this.action.stage === 'do') this.thought = this.action.def.icon;
     else if (st.poisoned > 0) this.thought = '🤢';
     else if (st.gassy > 0) this.thought = '💨';
+    else if (st.breath > 0) this.thought = '🪥';
     else if (this.needs.hygiene < 15) this.thought = '🦨';
     else if (this.confused && !this.action) this.thought = '🌀';
     else if (this.needs.hunger < 15) this.thought = '🍗❗';

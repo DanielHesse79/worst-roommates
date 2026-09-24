@@ -376,6 +376,19 @@ export const OBJECT_ACTIONS = {
   toilet: [
     { id: 'usetoilet', label: 'Use the toilet (and doomscroll)', icon: '🚽', duration: 20, spot: useSpot, available: (s, o) => !o.charred,
       tick(s, o, g, a, m) { s.addNeed('fun', 0.4 * m); s.addNeed('hygiene', 0.3 * m); } },
+    // The Slob's oral hygiene routine: four hours of breath that can floor a grown adult.
+    { id: 'toiletbrush', label: 'Brush teeth with the toilet brush', icon: '🪥', evil: true, duration: 8, spot: useSpot,
+      available: (s, o) => !o.charred && s.canUse('breathe'),
+      finish(s, o, g) {
+        s.status.breath = 240;
+        s.addNeed('hygiene', -10);
+        s.addNeed('fun', 10);
+        g.view.burst(s.x, s.z, 'stink', 1.35);
+        g.log(`🪥 ${s.first} brushes their teeth with the toilet brush. Thoroughly. Gums and all. Their breath is now a weapon.`, 'evil');
+        const seen = g.witnesses(objCells(o)).filter(x => x !== s && x.rel);
+        for (const x of seen) { x.addNeed('fun', -12); changeRel(x, s, -6); }
+        if (seen.length) g.log(`🤮 ${seen.map(x => x.first).join(' and ')} saw that. They will never unsee it.`, 'dim');
+      } },
   ],
   table: [
     { id: 'toenails', label: 'Clip toenails at the dinner table', icon: '🦶', evil: true, duration: 12, spot: () => [4, 4],
@@ -581,6 +594,34 @@ function tactics() {
         if (t.health <= 0) g.kill(t, 'Laughter');
         else g.log(`😂 ${t.first} laughs until they can't breathe. (-${Math.round(dmg)} health)`, 'dim');
       } },
+    { id: 'breathe', label: 'Breathe on them. Up close.', icon: '😮‍💨', evil: true, approachSim: true, duration: 6,
+      available: s => s.canUse('breathe'),
+      finish(s, t, g) {
+        g.view.burst(t.x, t.z, 'stink', 1.35);
+        changeRel(s, t, -12);
+        t.addNeed('hygiene', -20);
+        t.addNeed('fun', -15);
+        if (!(s.status.breath > 0)) {
+          g.log(`😮‍💨 ${s.first} breathes on ${t.first} from two centimetres away. Bad, but survivable. The toilet brush would fix that.`, 'dim');
+          return;
+        }
+        // A "good morning" at close range, straight from the bowl. Sleepers get the full dose.
+        const sleeping = asleep(t);
+        if (sleeping) t.endAction();
+        const dmg = rand(10, 18) * (sleeping ? 1.6 : 1);
+        t.health -= dmg;
+        g.popup(t, '🤢 -' + Math.round(dmg), '#9acd32');
+        g.sfx(sleeping ? 'scream' : 'gulp');
+        if (t.health <= 0) { g.kill(t, 'Bad Breath'); return; }
+        const how = sleeping ? `leans over ${t.first}'s bed and breathes a toilet-fresh "GOOD MORNING"` : `breathes a toilet-fresh "hello" into ${t.first}'s face`;
+        if (Math.random() < 0.2) {
+          t.status.passedOut = 15;
+          g.log(`🤢 ${s.first} ${how}. ${t.first}'s eyes roll back and they faint on the spot. (-${Math.round(dmg)} health)`, 'evil');
+        } else {
+          g.log(`🤢 ${s.first} ${how}. ${t.first} gags. (-${Math.round(dmg)} health)`, 'evil');
+        }
+        if (Math.random() < (t.has('hotheaded') ? 0.5 : 0.1)) t.queue.unshift(makeAction(FIGHT, s, 'auto'));
+      } },
     { id: 'playtest', label: 'Make them playtest his game', icon: '🕹️', evil: true, approachSim: true, duration: 5,
       available: s => s.canUse('playtest'),
       finish(s, t, g) {
@@ -707,6 +748,7 @@ export const SIM_ACTIONS = [
   { id: 'chat', label: 'Chat', icon: '💬', approachSim: true, duration: 20,
     tick(s, t, g, a, m) {
       s.addNeed('social', 1.2 * m); t.addNeed('social', 1 * m); changeRel(s, t, 0.3 * m);
+      if (s.status.breath > 0) { t.addNeed('fun', -0.6 * m); t.addNeed('hygiene', -0.3 * m); }
       if (Math.random() < 0.12 * m) g.sfx('blah');
     } },
   { id: 'insult', label: 'Insult', icon: '🗯️', evil: true, approachSim: true, duration: 10,
