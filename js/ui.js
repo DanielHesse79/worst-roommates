@@ -2,12 +2,14 @@ import { TRAITS, CAUSES, PERSONALITIES, ROSTER } from './data.js';
 import { menuFor } from './interactions.js';
 import { TRAPS, toolPrice, toolLock } from './traps.js';
 import { JOBS, SKILLS, RENT, jobTitle, shiftPay, shiftTime } from './career.js';
-import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone } from './contracts.js';
+import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone, POETIC, canBeNemesis } from './contracts.js';
 import { SHOP } from './shop.js';
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
 const hex = c => '#' + c.toString(16).padStart(6, '0');
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const chips = (traits, persona) => `<span class="trait persona">${PERSONALITIES[persona].icon} ${esc(PERSONALITIES[persona].name)}</span>` +
+  traits.map(t => `<span class="trait" title="${esc(TRAITS[t].desc)}">${TRAITS[t].icon} ${esc(TRAITS[t].name)}</span>`).join('');
 
 export class UI {
   constructor(game) {
@@ -52,6 +54,7 @@ export class UI {
     this.$('toBoardBtn').addEventListener('click', () => { this.hide('result'); this.showBoard(); });
     this.$('nextBtn').addEventListener('click', () => {
       this.hide('result');
+      if (g.versus) { this.showCrewPicker('versus'); return; }
       const next = g.contractIndex === null || g.contractIndex === undefined ? null : g.contractIndex + 1;
       if (next === null || next >= CONTRACTS.length) g.startFreePlay(g.charId); else this.showCrewPicker(next);
     });
@@ -62,19 +65,21 @@ export class UI {
       if (!b) return;
       const v = b.dataset.play;
       if (v === 'resume') { this.hide('board'); g.setSpeed(g.lastSpeed || 1); }
-      else if (v === 'free') this.showCrewPicker('free');
+      else if (v === 'free' || v === 'versus') this.showCrewPicker(v);
       else this.showCrewPicker(Number(v));
     });
     this.$('crewBody').addEventListener('click', e => {
       const card = e.target.closest('.recruit');
-      if (!card || card.classList.contains('locked')) return;
-      this.pick.chosen = card.dataset.recruit;
+      if (!card || card.classList.contains('locked') || card.classList.contains('self')) return;
+      if (card.dataset.side === 'foe') this.pick.foe = card.dataset.recruit;
+      else this.pick.chosen = card.dataset.recruit;
       g.sfx('click');
       this.updateCrewPicker();
     });
     this.$('crewGo').addEventListener('click', () => {
       this.hide('crew');
-      if (this.pick.index === 'free') g.startFreePlay(this.pick.chosen);
+      if (this.pick.index === 'versus') g.startVersus(this.pick.chosen, this.pick.foe);
+      else if (this.pick.index === 'free') g.startFreePlay(this.pick.chosen);
       else g.startContract(this.pick.index, this.pick.chosen);
     });
     this.$('crewBack').addEventListener('click', () => { this.hide('crew'); this.showBoard(); });
@@ -316,7 +321,10 @@ export class UI {
     }).join('');
     const free = `<div class="card free"><div class="cardHead"><b>∞ Free Play</b></div>
       <div class="brief">Endless random households, every tool unlocked, no suspicion. You still need a job. Pays 🪙10 per kill.</div>
-      <div class="cardFoot"><span></span><button data-play="free">Play</button></div></div>`;
+      <div class="cardFoot"><span></span><button data-play="free">Play</button></div></div>
+      <div class="card free versus"><div class="cardHead"><b>⚔️ Sim vs Sim</b></div>
+      <div class="brief">Pick who you are and who you'd most like to see dead. Your nemesis moves in with all their talents, and hates you right back.</div>
+      <div class="cardFoot"><span>⏳ 4d · 💵 $150 · 🪙 200</span><button data-play="versus">Pick a fight</button></div></div>`;
     const market = SHOP.map(item => {
       const owned = p.owned.includes(item.id);
       const afford = p.money >= item.price;
@@ -333,12 +341,11 @@ export class UI {
 
   // Before a contract (or free play): show the targets' intel and let the player pick who they'll be.
   showCrewPicker(index) {
+    if (index === 'versus') { this.showVersusPicker(); return; }
     const g = this.game, c = index === 'free' ? null : CONTRACTS[index];
     const owned = r => !r.locked || g.profile.owned.includes('recruit:' + r.id);
     const last = ROSTER.find(r => r.id === g.profile.character && owned(r));
     this.pick = { index, chosen: last ? last.id : null };
-    const chips = (traits, persona) => `<span class="trait persona">${PERSONALITIES[persona].icon} ${esc(PERSONALITIES[persona].name)}</span>` +
-      traits.map(t => `<span class="trait" title="${esc(TRAITS[t].desc)}">${TRAITS[t].icon} ${esc(TRAITS[t].name)}</span>`).join('');
     const intel = c ? c.targets.map((t, i) => {
       const obj = c.objectives.find(o => o.who === i);
       return `<div class="intel"><b>🎯 ${esc(t.name)}</b>${obj && obj.cause ? ` <span class="must">✨ ideally: ${esc(CAUSE_VERB[obj.cause])}</span>` : ''}<div class="traits">${chips(t.traits, t.personality)}</div></div>`;
@@ -363,11 +370,49 @@ export class UI {
     this.show('crew');
   }
 
+  // Sim vs Sim: who you are (any character you own) and who must die (anyone at all, except you).
+  showVersusPicker() {
+    const g = this.game;
+    const owned = r => !r.locked || g.profile.owned.includes('recruit:' + r.id);
+    const last = ROSTER.find(r => r.id === g.profile.character && owned(r));
+    this.pick = { index: 'versus', chosen: last ? last.id : null, foe: null };
+    const mine = ROSTER.map(r => {
+      const job = JOBS[r.id];
+      return `<div class="recruit ${owned(r) ? '' : 'locked'}" data-recruit="${r.id}" data-side="me">
+        <div class="rHead"><b>${esc(r.name)}</b>${owned(r) ? '<span class="tick">✔</span>' : '<span>🔒 black market</span>'}</div>
+        <div class="traits">${chips(r.traits, r.personality)}${r.immortal ? '<span class="trait immortal">♾️ Immortal</span>' : ''}</div>
+        <div class="jobLine">💼 ${esc(job.titles[0])} · 💵 $${job.pay[0]}/shift</div></div>`;
+    }).join('');
+    const theirs = ROSTER.filter(canBeNemesis).map(r => {
+      const [cause, why] = POETIC[r.id];
+      return `<div class="recruit" data-recruit="${r.id}" data-side="foe">
+        <div class="rHead"><b>🎯 ${esc(r.name)}</b><span class="tick">☠</span></div>
+        <div class="traits">${chips(r.traits, r.personality)}</div>
+        <div class="jobLine">✨ Poetic justice: ${esc(CAUSE_VERB[cause])} <small>(${esc(why)})</small></div></div>`;
+    }).join('');
+    this.$('crewBody').innerHTML = `
+      <h1>⚔️ Sim vs Sim</h1><p class="sub">Two roommates, one house, one hearse. You start with 💵 $150 and four days. Asraa and Daniel are immortal, so they're never on the list.</p>
+      <h2 class="marketTitle">Who are you? <span class="wallet" id="crewCount"></span></h2>
+      <div class="rosterGrid">${mine}</div>
+      <h2 class="marketTitle">Who must die?</h2>
+      <div class="rosterGrid">${theirs}</div>`;
+    this.updateCrewPicker();
+    this.hide('board');
+    this.show('crew');
+  }
+
   updateCrewPicker() {
-    document.querySelectorAll('#crewBody .recruit').forEach(el => el.classList.toggle('chosen', this.pick.chosen === el.dataset.recruit));
-    const who = ROSTER.find(r => r.id === this.pick.chosen);
-    this.$('crewCount').textContent = who ? `You are ${who.name}` : 'Pick one';
-    this.$('crewGo').disabled = !who;
+    const versus = this.pick.index === 'versus';
+    if (versus && this.pick.foe === this.pick.chosen) this.pick.foe = null; // nobody is their own nemesis
+    document.querySelectorAll('#crewBody .recruit').forEach(el => {
+      const foe = el.dataset.side === 'foe';
+      el.classList.toggle('chosen', (foe ? this.pick.foe : this.pick.chosen) === el.dataset.recruit);
+      el.classList.toggle('self', foe && el.dataset.recruit === this.pick.chosen);
+    });
+    const who = ROSTER.find(r => r.id === this.pick.chosen), foe = versus && ROSTER.find(r => r.id === this.pick.foe);
+    this.$('crewCount').textContent = versus ? `${who ? who.name : '?'} vs ${foe ? foe.name : '?'}` : who ? `You are ${who.name}` : 'Pick one';
+    this.$('crewGo').disabled = !who || (versus && !foe);
+    this.$('crewGo').textContent = versus ? 'Fight →' : 'Move in →';
   }
 
   renderContract() {
@@ -437,7 +482,7 @@ export class UI {
     this.$('resultBody').innerHTML = body;
     const hasNext = r.won;
     this.$('nextBtn').style.display = hasNext ? '' : 'none';
-    this.$('nextBtn').textContent = g.contractIndex + 1 < CONTRACTS.length ? 'Next contract →' : 'Free play →';
+    this.$('nextBtn').textContent = g.versus ? 'Another fight →' : g.contractIndex + 1 < CONTRACTS.length ? 'Next contract →' : 'Free play →';
     this.$('retryBtn').style.display = '';
     this.show('result');
   }

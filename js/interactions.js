@@ -103,10 +103,13 @@ function smellsGas(s, o, g) {
   return true;
 }
 
-// When one of the others rigs something while you're watching, you get to know about it.
+// When one of the others rigs something while you're watching, you get to know about it, and your free
+// will keeps away from it.
 function youSawThat(g, s, o, what) {
   const me = g.player;
-  if (me && me !== s && me.alive && g.witnesses(objCells(o)).includes(me)) g.log(`👀 ${me.first} saw ${s.first} ${what}.`, 'warn');
+  if (!me || me === s || !me.alive || !g.witnesses(objCells(o)).includes(me)) return;
+  o.knownBy = [...(o.knownBy || []), me.id];
+  g.log(`👀 ${me.first} saw ${s.first} ${what}. ${me.first} won't be touching that.`, 'warn');
 }
 
 // Skill-building: an hour of practice at the right object.
@@ -766,7 +769,7 @@ export const SIM_ACTIONS = [
   FIGHT,
   { id: 'drink', label: 'Offer a "special" drink', icon: '🍹', evil: true, approachSim: true, duration: 10,
     finish(s, t, g) {
-      if (s.rosterId === 'asraa') {
+      if (s.rosterId === 'asraa' && t !== g.player) {
         // Nobody says no to Dr. Z, and nobody will ever find what was in it.
         t.status.poisoned += 110;
         t.status.untraceable = true;

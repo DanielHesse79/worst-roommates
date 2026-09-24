@@ -1,3 +1,5 @@
+import { ROSTER } from './data.js';
+
 // The campaign: each contract names one or more fixed targets 🎯 and the player picks who they'll be.
 // Every target has to die before the deadline without you getting caught; any death counts. The client's
 // preferred way of dying, and finishing early, are worth the other two stars.
@@ -130,6 +132,33 @@ export const CONTRACTS = [
   },
 ];
 
+// Sim vs Sim: pick who you are and who you'd most like to see dead. Your nemesis moves in with all their
+// own talents, hates you from day one and is out to get you too. Poetic justice (the death that suits
+// them) is worth a star. The immortals (Asraa and Daniel) are never on anyone's list.
+export const canBeNemesis = r => !r.immortal;
+export const POETIC = {
+  gloria: ['Electrocution', 'a ring light too close to the bath'], silas: ['Car Crash', 'hit by a car with no brakes, just like the ones he sells'],
+  dolly: ['Fright', 'one last dramatic scream'], adam: ['Crushed', 'buried under a shelf of books he would have summarised for you'],
+  pete: ['Explosion', 'out with a bang'], bertha: ['Slip', 'the bigger they are'], gus: ['Fire', 'his chili meets an open flame'],
+  seance: ['Meteor', 'she never saw it coming'], vincent: ['Drowning', 'he gargles with pool water, so let him gargle the lot'],
+};
+
+export function versusContract(meId, foeId) {
+  const me = ROSTER.find(r => r.id === meId), foe = ROSTER.find(r => r.id === foeId);
+  const [cause, why] = POETIC[foeId] || ['Fire', 'it seemed fitting'];
+  const first = foe.first || foe.name.split(' ')[0];
+  return {
+    id: `vs-${meId}-${foeId}`, versus: true, title: `${me.name} vs ${foe.name}`, client: me.name,
+    brief: `${me.name} has had enough of ${foe.name}. One of you is leaving this house in a hearse.`,
+    hint: `${first} knows you're coming and is out to get you too. Poetic justice earns a star: ideally ${first} should ${CAUSE_VERB[cause]} (${why}).`,
+    days: 4, cash: 150, pay: 200,
+    targets: [{ ...foe, nemesis: true }],
+    rels: [[0, 1, -70]],
+    objectives: [{ type: 'die', who: 0, cause }],
+    bonus: [{ type: 'wish', text: `Poetic justice: ${first} should ${CAUSE_VERB[cause]}` }, { type: 'before', day: 3 }],
+  };
+}
+
 const targets = g => g.sims.filter(s => s.role === 'target');
 
 // The job is to kill every target without getting caught; *how* they die is the client's wish, worth a star.
@@ -160,7 +189,7 @@ export const wishMet = g => g.contract.objectives.every(o => wishState(o, g) ===
 export function describeBonus(b) {
   if (b.type === 'suspicion') return `Keep suspicion under ${b.max}`;
   if (b.type === 'before') return b.day === 2 ? 'Finish on Day 1' : `Finish before Day ${b.day}`;
-  if (b.type === 'wish') return "Kill them the way the client asked";
+  if (b.type === 'wish') return b.text || "Kill them the way the client asked";
   return '?';
 }
 
@@ -175,7 +204,8 @@ export function objectiveState(o, g) {
 // Won once every target is dead and you're still standing. Getting exposed, dying, eviction and the
 // deadline are the ways to lose (see main.js).
 export function evaluate(g) {
-  if (g.player && !g.player.alive) return { state: 'failed', reason: `${g.player.name} ${CAUSE_PAST[g.player.cause] || 'died'}. Your roommates got you first.` };
+  const them = g.contract.versus ? targets(g)[0].first : 'Your roommates';
+  if (g.player && !g.player.alive) return { state: 'failed', reason: `${g.player.name} ${CAUSE_PAST[g.player.cause] || 'died'}. ${them} got you first.` };
   return { state: targets(g).every(s => !s.alive) ? 'won' : 'active' };
 }
 

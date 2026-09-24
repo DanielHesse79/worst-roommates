@@ -198,6 +198,8 @@ ul.objs li.failed { color: #ff6a5a; text-decoration: line-through; }
 ul.objs li.bonus { color: #ffd166; }
 ul.objs li.missed { color: #6d6070; }
 ul.objs li small { color: var(--dim); }
+.recruit.self { opacity: 0.3; pointer-events: none; }
+.recruit .jobLine small { color: var(--dim); }
 ul.objs li.extra { color: var(--dim); }
 ul.objs.extras b { color: #ffd166; }
 .susRow { display: flex; align-items: center; gap: 6px; font-size: 12px; }

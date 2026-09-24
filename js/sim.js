@@ -18,7 +18,7 @@ export class Sim {
     }
     usedNames.add(name);
     this.name = name;
-    this.first = name.split(' ')[0];
+    this.first = (spec && spec.first) || name.split(' ')[0]; // nicknames: Pyro Pete is Pete
     this.color = (spec && spec.color) || SIM_COLORS[index % SIM_COLORS.length];
     this.skin = (spec && spec.skin) || SKIN_TONES[Math.floor(Math.random() * SKIN_TONES.length)];
     this.look = (spec && spec.look) || null;

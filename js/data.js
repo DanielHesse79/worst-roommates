@@ -119,13 +119,13 @@ export const ROSTER = [
     pitch: 'Immortal hacker who makes obscure indie games from home (no commute, but no alibi either). From the computer he can overload the wiring or smart-lock every door.' },
   { id: 'vincent', name: 'Vincent', personality: 'slob', traits: ['glutton', 'lazy'], skills: { handiness: 3, chemistry: 2, cooking: 1 },
     look: 'slob', color: 0xc9b26b, pitch: 'Dental hygienist at a discount clinic who brushes his teeth with the toilet brush. Every morning. With pride. Fresh from the bowl, his breath floors grown adults one close-up "good morning" at a time, and sleeping roommates get it worst.' },
-  { id: 'pete', name: 'Pyro Pete', personality: 'schemer', traits: ['pyro', 'genius'], skills: { handiness: 4, chemistry: 2 },
+  { id: 'pete', name: 'Pyro Pete', first: 'Pete', personality: 'schemer', traits: ['pyro', 'genius'], skills: { handiness: 4, chemistry: 2 },
     pitch: 'Works at the fireworks shop. Lights fireplaces, stokes them, cranks heaters. Knows exactly how close is too close.', locked: true },
-  { id: 'bertha', name: 'Big Bertha', personality: 'drama', traits: ['hotheaded', 'glutton'], skills: { charisma: 3, handiness: 2 },
+  { id: 'bertha', name: 'Big Bertha', first: 'Bertha', personality: 'drama', traits: ['hotheaded', 'glutton'], skills: { charisma: 3, handiness: 2 },
     pitch: 'Nightclub bouncer, works nights. Throws scenes, throws punches, rarely loses.', locked: true },
-  { id: 'gus', name: 'Gassy Gus', personality: 'vampire', traits: ['glutton', 'genius'], skills: { cooking: 5, chemistry: 1 },
+  { id: 'gus', name: 'Gassy Gus', first: 'Gus', personality: 'vampire', traits: ['glutton', 'genius'], skills: { cooking: 5, chemistry: 1 },
     pitch: 'Chili cook with an iron stomach. Eat the chili yourself and walk into a small room with the target.', locked: true },
-  { id: 'seance', name: 'Sister Séance', personality: 'narcissist', traits: ['stargazer', 'paranoid'], skills: { charisma: 3, chemistry: 2 },
+  { id: 'seance', name: 'Sister Séance', first: 'Séance', personality: 'narcissist', traits: ['stargazer', 'paranoid'], skills: { charisma: 3, chemistry: 2 },
     pitch: 'Works the psychic hotline from home at night. Her dark-arts research raises Doom twice as fast.', locked: true },
 ];
 

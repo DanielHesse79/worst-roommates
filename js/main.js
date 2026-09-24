@@ -4,7 +4,7 @@ import { View } from './view.js';
 import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
 import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H } from './data.js';
-import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet } from './contracts.js';
+import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet, versusContract } from './contracts.js';
 import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf, toolPrice, toolLock } from './traps.js';
 import { sabotageFor, plantDef } from './interactions.js';
 import { initCareer, updateCareer } from './career.js';
@@ -73,7 +73,7 @@ class Game {
       const spec = specs[i];
       const s = new Sim(this.usedNames, i, spec.name ? spec : null);
       s.role = spec.role;
-      s.rosterId = spec.role === 'player' ? spec.id : null;
+      s.rosterId = spec.role === 'player' || spec.nemesis ? spec.id : null;
       s.place(...START_SPOTS[i]);
       this.sims.push(s);
     }
@@ -86,13 +86,13 @@ class Game {
         a.rel[b.id] = r; b.rel[a.id] = r;
       }
     }
+    // Best friends, always.
+    const asraa = this.sims.find(s => s.rosterId === 'asraa'), daniel = this.sims.find(s => s.rosterId === 'daniel');
+    if (asraa && daniel) { asraa.rel[daniel.id] = 90; daniel.rel[asraa.id] = 90; }
     for (const [i, j, v] of (contract && contract.rels) || []) {
       this.sims[i].rel[this.sims[j].id] = v;
       this.sims[j].rel[this.sims[i].id] = v;
     }
-    // Best friends, always.
-    const asraa = this.sims.find(s => s.rosterId === 'asraa'), daniel = this.sims.find(s => s.rosterId === 'daniel');
-    if (asraa && daniel) { asraa.rel[daniel.id] = 90; daniel.rel[asraa.id] = 90; }
     // Everyone gets their own bed.
     const beds = [...this.world.objects.values()].filter(o => o.type === 'bed').sort((a, b) => a.bedIndex - b.bedIndex);
     this.sims.forEach((s, i) => { beds[i].owner = s.id; beds[i].name = `${s.first}'s bed`; s.bedId = beds[i].id; });
@@ -130,6 +130,7 @@ class Game {
   }
 
   startContract(index, charId = this.charId) {
+    this.versus = null;
     this.contractIndex = index;
     this.charId = charId;
     this.profile.character = charId;
@@ -142,7 +143,24 @@ class Game {
     this.log(`💡 ${c.hint}`, 'dim');
   }
 
+  // Sim vs Sim: you against the one roommate you'd most like to see dead.
+  startVersus(meId, foeId) {
+    this.versus = [meId, foeId];
+    this.contractIndex = null;
+    this.charId = meId;
+    this.profile.character = meId;
+    saveProgress(this.profile);
+    this.setup(versusContract(meId, foeId), meId);
+    this.begin();
+    const c = this.contract, foe = this.sims[0];
+    this.log(`⚔️ SIM VS SIM: ${c.title}. ${c.brief}`, 'tool');
+    this.log(`😠 ${foe.first} knows exactly why you're here, and the feeling is mutual.`, 'warn');
+    this.introduceJob();
+    this.log(`💡 ${c.hint}`, 'dim');
+  }
+
   startFreePlay(charId = this.charId) {
+    this.versus = null;
     this.contractIndex = null;
     this.charId = charId;
     this.freeLevel++;
@@ -160,7 +178,8 @@ class Game {
   }
 
   retry() {
-    if (this.contractIndex !== null && this.contractIndex !== undefined) this.startContract(this.contractIndex, this.charId);
+    if (this.versus) this.startVersus(...this.versus);
+    else if (this.contractIndex !== null && this.contractIndex !== undefined) this.startContract(this.contractIndex, this.charId);
     else { this.freeLevel--; this.startFreePlay(this.charId); }
   }
 
@@ -568,7 +587,7 @@ class Game {
     if (won) {
       // Bonus points on top of the kills: the client's way, time to spare, and a clean job.
       const extras = this.result.extras;
-      if (wishMet(this)) extras.push(['✨ The client\'s way', 300]);
+      if (wishMet(this)) extras.push([this.contract.versus ? '✨ Poetic justice' : '✨ The client\'s way', 300]);
       const hoursLeft = Math.floor((this.contract.days * 1440 - this.clock) / 60);
       if (hoursLeft > 0) extras.push([`⏱️ ${hoursLeft}h to spare`, hoursLeft * 10]);
       if (this.peakSuspicion < 30) extras.push(['🧼 Clean job (suspicion stayed under 30)', 300]);
@@ -584,7 +603,8 @@ class Game {
       this.profile.money += this.result.reward;
       saveProgress(this.profile);
     }
-    this.log(won ? '✅ Contract complete. The client is... satisfied.' : `❌ Contract failed: ${reason}`, won ? 'death' : 'warn');
+    const done = this.contract.versus ? `✅ ${this.player.first} wins. The house is theirs. For now.` : '✅ Contract complete. The client is... satisfied.';
+    this.log(won ? done : `❌ Contract failed: ${reason}`, won ? 'death' : 'warn');
     this.sfx(won ? 'win' : 'fail');
     const session = this.session;
     setTimeout(() => { if (this.session === session) { this.setSpeed(0); this.ui.showResult(); } }, won ? 3800 : 1500);
@@ -663,7 +683,7 @@ class Game {
     }
     if (this.contract && !this.result) {
       // Airtight alibi and a resident legal expert (Asraa Z) each double how fast suspicion fades.
-      const lawyer = this.sims.some(s => s.rosterId === 'asraa' && s.alive);
+      const lawyer = !!this.player && this.player.rosterId === 'asraa' && this.player.alive;
       const fade = 0.5 * (this.upgrade('alibi') ? 2 : 1) * (lawyer ? 2 : 1);
       this.suspicion = Math.max(0, this.suspicion - fade * min / 60);
       if (this.clock >= this.contract.days * 1440) this.endContract(false, `Time ran out. The deadline was the end of Day ${this.contract.days}.`);
