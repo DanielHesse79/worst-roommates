@@ -493,6 +493,42 @@ for (const list of Object.values(OBJECT_ACTIONS)) {
   for (const d of list) if (!d.facePos) d.facePos = (s, o) => (o.cells && o.cells.length ? objCenter(o) : null);
 }
 
+// ---------- people learn ----------
+// Every trick someone pulls on you is remembered (t.wise[by][trick]). It works less well each time, some
+// stop working altogether, and anyone who keeps coming back for more starts getting avoided.
+
+export const triedOn = (s, t, id) => (t.wise && t.wise[s.id] && t.wise[s.id][id]) || 0;
+const pestered = (s, t) => Object.values((t.wise && t.wise[s.id]) || {}).reduce((a, n) => a + n, 0);
+// Each repeat of the same trick on the same person works half as well again.
+const fade = (s, t, id) => 1 / (1 + 0.5 * Math.max(0, triedOn(s, t, id) - 1));
+const WISE_AT = { drink: 1, lovebomb: 1, guilttrip: 2, lure: 2, story: 2, playtest: 2, gaslight: 3, joke: 3, triangulate: 3, smear: 3, breathe: 4 };
+const SEEN_THROUGH = {
+  drink: 'The last drink you gave me made me sick. I am not having another.', lovebomb: 'I have seen how this ends. No thanks.',
+  guilttrip: 'Cook it yourself.', lure: 'Not falling for that wink again.', story: 'Not this story again. I have heard the prequel.',
+  playtest: 'There is no save button. I remember.', gaslight: 'Nice try. I KNOW there was a ladder.', joke: 'Heard it. Not funny the third time.',
+  triangulate: 'You say that about everyone.', smear: 'Nobody believes your rumours any more.', breathe: 'I am holding my breath until you leave.',
+};
+
+// Called as someone steps up to do something nasty to `t`. True if `t` won't have it (the action is off).
+export function seesThrough(s, t, def, g) {
+  if (!def.evil || !t.rel) return false;
+  const tried = triedOn(s, t, def.id);
+  if (WISE_AT[def.id] !== undefined && tried >= WISE_AT[def.id]) {
+    changeRel(s, t, -6);
+    g.dialogue.say(t, 'wise', 2, SEEN_THROUGH[def.id]);
+    g.log(`🙅 ${t.first} isn't falling for ${s.first}'s tricks again: "${SEEN_THROUGH[def.id]}"`, 'dim');
+    return true;
+  }
+  // Someone who keeps getting pestered starts walking away when they see you coming.
+  if (pestered(s, t) >= 4 && !asleep(t) && Math.random() < 0.35) {
+    g.log(`🚶 ${t.first} sees ${s.first} coming and finds somewhere else to be.`, 'dim');
+    return true;
+  }
+  const w = (t.wise = t.wise || {}), m = (w[s.id] = w[s.id] || {});
+  m[def.id] = tried + 1;
+  return false;
+}
+
 // ---------- manipulation tactics (only sims with the matching personality can use them) ----------
 
 const say = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -528,7 +564,7 @@ function tactics() {
       available: s => s.canUse('gaslight'), tick: blah,
       finish(s, t, g) {
         const wasFine = !t.confused;
-        t.sanity = Math.max(0, t.sanity - (t.has('genius') ? 12 : 24));
+        t.sanity = Math.max(0, t.sanity - (t.has('genius') ? 12 : 24) * fade(s, t, 'gaslight'));
         g.log(`🌀 ${s.first} to ${t.first}: "${say(GASLIGHT)}"`, 'evil');
         if (wasFine && t.confused) g.log(`🌀 ${t.name} no longer trusts their own memory. Confused sims have far more accidents.`, 'warn');
       } },
@@ -537,7 +573,7 @@ function tactics() {
       finish(s, t, g) {
         const third = others(g, s, t).sort((a, b) => t.relWith(b) - t.relWith(a))[0];
         if (!third) return;
-        changeRel(t, third, -28);
+        changeRel(t, third, -28 * fade(s, t, 'triangulate'));
         changeRel(s, t, 6);
         g.log(`🔺 ${s.first} to ${t.first}: "I'm only telling you because I care... but ${third.first} said some things about you."`, 'evil');
       } },
@@ -552,7 +588,7 @@ function tactics() {
     { id: 'smear', label: 'Start a smear campaign', icon: '🗞️', evil: true, approachSim: true, duration: 15,
       available: s => s.canUse('smear'), tick: blah,
       finish(s, t, g) {
-        for (const o of others(g, s, t)) changeRel(o, t, -18);
+        for (const o of others(g, s, t)) changeRel(o, t, -18 * fade(s, t, 'smear'));
         t.addNeed('social', -15);
         g.log(`🗞️ ${s.first} makes sure everyone hears that ${t.first} ${say(SMEARS)}.`, 'evil');
       } },
@@ -590,7 +626,7 @@ function tactics() {
       finish(s, t, g) {
         g.log(`😂 ${s.first}: "${say(JOKES)}"`, 'evil');
         t.addNeed('fun', 25);
-        const dmg = rand(14, 26) * (t.needs.energy < 30 ? 1.5 : 1);
+        const dmg = rand(14, 26) * (t.needs.energy < 30 ? 1.5 : 1) * fade(s, t, 'joke');
         t.health -= dmg;
         g.popup(t, 'HA' + 'HA'.repeat(Math.floor(dmg / 10)), '#ffe14a');
         g.sfx('blah');
@@ -770,12 +806,15 @@ export const SIM_ACTIONS = [
   { id: 'drink', label: 'Offer a "special" drink', icon: '🍹', evil: true, approachSim: true, duration: 10,
     finish(s, t, g) {
       if (s.rosterId === 'asraa' && t !== g.player) {
-        // Nobody says no to Dr. Z, and nobody will ever find what was in it.
-        t.status.poisoned += 110;
+        // Nobody says no to Dr. Z, and nobody will ever find what was in it. It won't finish anyone off on
+        // its own, though: it leaves them sick, dizzy and exhausted, ready for whatever comes next.
+        t.status.poisoned += 45;
         t.status.untraceable = true;
+        t.addNeed('energy', -25);
+        t.sanity = Math.max(0, t.sanity - 10);
         changeRel(s, t, 10);
         g.sfx('gulp');
-        g.log(`🍸 Dr. Asraa Z hands ${t.first} a cocktail with a smile. ${t.first} doesn't even think to hesitate.`, 'evil');
+        g.log(`🍸 Dr. Asraa Z hands ${t.first} a cocktail with a smile. ${t.first} doesn't even think to hesitate. Soon they feel wonderful, then dizzy, then very, very tired.`, 'evil');
         return;
       }
       if (notices(t, g, 0.7)) {

@@ -6,7 +6,8 @@ import { runAutonomy } from './autonomy.js';
 import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H, HABITS } from './data.js';
 import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet, versusContract, bestKey } from './contracts.js';
 import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf, toolPrice, toolLock } from './traps.js';
-import { sabotageFor, plantDef } from './interactions.js';
+import { sabotageFor, plantDef, seesThrough } from './interactions.js';
+import { updateFavours } from './crime.js';
 import { initCareer, updateCareer } from './career.js';
 import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
@@ -125,6 +126,7 @@ class Game {
     this.warned = false;
     this.seenSabotage = false;
     this.oilSlick = 0;
+    this.favours = [];
     initCareer(this, charId, (contract ? contract.cash : 200) + (this.upgrade('pockets') ? 100 : 0));
     if (contract && contract.setup) contract.setup(this);
   }
@@ -298,6 +300,8 @@ class Game {
     sim.habits = sim.habits || {};
     sim.habits[key] = (sim.habits[key] || 0) + 1;
   }
+
+  seesThrough(s, t, def) { return seesThrough(s, t, def, this); }
 
   // The score, like the collection, is kept between sessions.
   addScore(pts) {
@@ -709,6 +713,7 @@ class Game {
     updateVisitors(this, gdt, min);
     updateNeighbours(this, gdt, min);
     updateEmergency(this, gdt, min);
+    updateFavours(this);
     updateGang(this, gdt, min);
     updateOutsiders(this, gdt, min);
     if (this.hackLockUntil && this.clock > this.hackLockUntil) {

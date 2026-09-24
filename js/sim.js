@@ -361,6 +361,7 @@ export class Sim {
       if (def.approachSim) {
         const t = a.target;
         if (!t.alive || t.status.swimming || t.status.passedOut > 0) return this.fail(game, 'got no reaction');
+        if (game.seesThrough(this, t, def)) { this.endAction(); return; }
         t.status.engaged = a.duration;
         t.status.engagedWith = this;
         a.data.partner = t;

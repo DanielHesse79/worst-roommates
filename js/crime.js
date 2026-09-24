@@ -75,28 +75,83 @@ export function witnessCrime(g, me, cells, what, { ids = [], victim = null, proo
       g.log(r.fedUp ? `🤫 ${saw}. After everything this house has put them through, they decide they saw nothing.`
         : `🤝 ${saw}, and gives a slow nod. ${x.first} has never liked ${r.v.first}. Your secret is safe.`, 'tool');
       say(g, x, [...COVER_LINES, `Make sure it's ${r.v.first}.`]);
-    } else if (r.kind === 'blackmail' && spend(g, r.price)) {
-      bond(x, me, -5);
-      g.log(`🤐 ${saw}. ${x.first} hates ${r.v.first} even more than ${me.first}, so the silence only costs $${r.price}. (paid)`, 'warn');
+    } else if (r.kind === 'blackmail' && !g.ui.choosing) {
+      g.log(`🤐 ${saw}. ${x.first} hates ${r.v.first} even more than ${me.first}, and wants to talk terms.`, 'warn');
       say(g, x, BLACKMAIL_LINES);
+      blackmail(g, me, x, r, { who: me.first, what: act, ids, proof });
     } else if (r.kind === 'talk') {
       if (x.rel) bond(x, me, -10);
       g.log(`🗣️ ${saw}. "It's not what it looks like!" ${me.first} talks fast, and ${x.first} half-believes it.${g.contract ? ' (+5 suspicion)' : ''}`, 'warn');
       g.addSuspicion(5);
     } else {
       if (x.rel) bond(x, me, -30);
-      const why = r.kind === 'blackmail' ? `${me.first} can't pay their price of $${r.price}, so they call the police.`
-        : r.spite ? `${x.first} can't stand ${r.v.first}, but they hate ${me.first} even more. They call the police.`
+      const why = r.spite ? `${x.first} can't stand ${r.v.first}, but they hate ${me.first} even more. They call the police.`
         : r.mine ? `${x.first} realises it's meant for them, and calls the police.` : null;
       g.log(why ? `📞 ${saw}. ${why}` : `📞 ${saw} and calls the police!`, 'warn');
       say(g, x, r.mine ? SELF_LINES : REPORT_LINES);
       reports.push(x);
     }
   }
-  if (!reports.length) return;
+  if (reports.length) callPolice(g, { by: reports.map(x => x.first).join(' and '), who: me.first, what: act, ids, proof });
+}
+
+function callPolice(g, tip) {
   const sus = g.upgrade('silent') ? 8 : 15;
   g.addSuspicion(sus, `🚨 A witness statement is on its way to the station. (+${sus} suspicion)`);
-  reportCrime(g, { by: reports.map(x => x.first).join(' and '), who: me.first, what: act, ids, proof });
+  reportCrime(g, tip);
+}
+
+// A witness who'll keep quiet for a price. The game waits while you decide: pay, haggle, promise them
+// the death they want, or call their bluff.
+function blackmail(g, me, x, r, tip) {
+  const v = r.v, price = r.price, half = Math.ceil(price / 2);
+  const haggle = Math.min(0.9, 0.25 + (me.skills.charisma || 0) * 0.06);
+  const bluff = Math.min(0.85, 0.35 + Math.max(0, -rel(x, me) - 40) / 150);
+  const talk = () => callPolice(g, { ...tip, by: x.first });
+  g.ui.choose(`🤐 ${x.first} wants hush money`,
+    `${x.first} saw ${me.first} ${tip.what}. They hate ${v.first} even more than they hate ${me.first}, so they're open to a deal. You have $${Math.max(0, Math.floor(g.cash))}.`, [
+      { label: `💵 Pay $${price}`, note: g.cash < price ? "You can't afford it" : 'Silence, guaranteed', disabled: g.cash < price, run() {
+        spend(g, price);
+        bond(x, me, -5);
+        g.log(`🤐 ${me.first} pays ${x.first} $${price}. Their lips are sealed.`, 'tool');
+      } },
+      { label: '🗣️ Haggle', note: `${Math.round(haggle * 100)}% chance they settle for $${half}. If not, they call the police`, run() {
+        if (Math.random() < haggle && spend(g, half)) {
+          g.log(`🗣️ ${me.first} talks ${x.first} down to $${half}. A bargain, for silence.`, 'tool');
+          return;
+        }
+        g.log(`🗣️ ${x.first} is insulted by ${me.first}'s offer and reaches for the phone.`, 'warn');
+        bond(x, me, -15);
+        talk();
+      } },
+      { label: `🤝 Promise ${v.first} will be dead by tomorrow night`, note: "They keep quiet if you deliver. If not, they talk", run() {
+        g.favours.push({ by: x, victim: v, until: g.clock + 1440, tip: { ...tip, by: x.first } });
+        bond(x, me, 10);
+        g.log(`🤝 ${me.first} and ${x.first} shake on it: ${v.first} is dead within a day, and ${x.first} never saw a thing.`, 'tool');
+      } },
+      { label: '🎲 Call their bluff', note: `${Math.round(bluff * 100)}% chance they really call the police`, run() {
+        bond(x, me, -10);
+        if (Math.random() < bluff) { g.log(`🎲 ${x.first} was not bluffing.`, 'warn'); talk(); return; }
+        g.log(`🎲 ${x.first} grumbles, glares, and keeps quiet. For now.`, 'tool');
+      } },
+    ]);
+}
+
+// Promises made to blackmailers: keep them, or they talk.
+export function updateFavours(g) {
+  if (!g.favours.length || g.over) return;
+  g.favours = g.favours.filter(f => {
+    if (!f.by.alive) return false;
+    if (!f.victim.alive) {
+      g.log(`🤝 ${f.by.first}, looking at ${f.victim.first}'s grave: "Pleasure doing business."`, 'tool');
+      if (g.player) bond(f.by, g.player, 15);
+      return false;
+    }
+    if (g.clock < f.until) return true;
+    g.log(`📞 ${f.by.first} got tired of waiting for ${f.victim.first} to drop dead, and calls the police.`, 'warn');
+    callPolice(g, f.tip);
+    return false;
+  });
 }
 
 // Being seen tidying up isn't a crime, but it doesn't look great either.

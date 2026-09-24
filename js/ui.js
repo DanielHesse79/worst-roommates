@@ -236,6 +236,33 @@ export class UI {
 
   closePie() { this.pie.classList.add('hidden'); }
 
+  // A decision the game waits for: it pauses, shows the options, and carries on once you've picked one.
+  choose(title, text, options) {
+    const g = this.game, resume = g.speed || g.lastSpeed || 1;
+    this.choosing = true;
+    g.setSpeed(0);
+    this.$('choiceTitle').textContent = title;
+    this.$('choiceText').textContent = text;
+    const box = this.$('choiceOptions');
+    box.innerHTML = '';
+    for (const o of options) {
+      const b = document.createElement('button');
+      b.className = 'choiceBtn';
+      b.innerHTML = `${esc(o.label)}${o.note ? `<small>${esc(o.note)}</small>` : ''}`;
+      b.disabled = !!o.disabled;
+      b.addEventListener('click', () => {
+        this.hide('choice');
+        this.choosing = false;
+        g.sfx('click');
+        o.run();
+        if (!g.over) g.setSpeed(resume);
+        this.refresh();
+      });
+      box.appendChild(b);
+    }
+    this.show('choice');
+  }
+
   // Reading people: what state a roommate is in, what they're doing, who they like and loathe, and the
   // habits you've caught them at. This is what tells you when the moment is right.
   personCard(t) {

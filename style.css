@@ -209,6 +209,9 @@ ul.objs li small { color: var(--dim); }
 .pcTag.good { background: rgba(125, 255, 154, 0.16); color: #9dffb3; }
 .pcTag.meh { background: rgba(255, 209, 102, 0.16); color: #ffd98a; }
 .pcTag.bad { background: rgba(255, 106, 90, 0.18); color: #ff9a8e; }
+#choiceOptions { display: grid; gap: 8px; margin-top: 12px; }
+.choiceBtn { text-align: left; padding: 10px 12px; }
+.choiceBtn small { display: block; font-size: 11px; opacity: 0.75; font-weight: 400; margin-top: 2px; }
 .recruit .jobLine small { color: var(--dim); }
 ul.objs li.extra { color: var(--dim); }
 ul.objs.extras b { color: #ffd166; }
