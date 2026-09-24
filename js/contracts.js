@@ -223,12 +223,25 @@ export function starsFor(g) {
   return { count: 1 + bonuses.filter(b => b.met).length, bonuses };
 }
 
-// Player profile: best stars per contract, crypto, black-market purchases and the last character played.
+// Player profile: best stars per contract, crypto, black-market purchases, the last character played,
+// lifetime score, every way of dying discovered so far, and personal bests per contract and character.
 const KEY = 'worst-roommates-progress';
 export function loadProgress() {
   let p = {};
   try { p = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { p = {}; }
-  return { stars: p.stars || {}, money: p.money || 0, owned: p.owned || [], character: p.character || (p.crew || [])[0] || null };
+  return { stars: p.stars || {}, money: p.money || 0, owned: p.owned || [], character: p.character || (p.crew || [])[0] || null,
+    score: p.score || 0, causes: p.causes || [], best: p.best || {} };
+}
+
+// Personal bests are kept per contract and character: "pool|gloria" -> points.
+export const bestKey = (contractId, charId) => `${contractId}|${charId}`;
+export function bestFor(profile, contractId) {
+  let top = null;
+  for (const [key, points] of Object.entries(profile.best)) {
+    const [id, who] = key.split('|');
+    if (id === contractId && (!top || points > top.points)) top = { points, who };
+  }
+  return top;
 }
 export function saveProgress(p) {
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* storage unavailable: progress lasts this session */ }

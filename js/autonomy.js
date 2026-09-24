@@ -197,5 +197,17 @@ export function runAutonomy(s, g, min) {
   // Your own free will covers needs and chores; the scheming is up to you.
   const scheming = s !== g.player && !starving;
   const choice = (scheming && pickCurious(s, g)) || (scheming && pickEvil(s, g)) || pickNeed(s, g) || pickClean(s, g) || pickWander(s, g);
-  if (choice) s.enqueue(choice.def, choice.target, 'auto');
+  if (!choice) return;
+  s.enqueue(choice.def, choice.target, 'auto');
+  warnPlayer(s, g, choice);
+}
+
+// Some plans are obvious enough that you get a moment's warning.
+function warnPlayer(s, g, { def, target }) {
+  const me = g.player;
+  if (!me || !me.alive || me.status.away || s === me) return;
+  if (def.id === 'hideladder' && me.status.swimming) g.danger(`🪜 ${s.first} is heading for the pool ladder while ${me.first} is in the pool. Get out, now!`);
+  else if (def.id === 'drink' && target === me) g.danger(`🍹 ${s.first} is coming over with a "special" drink for ${me.first}. Walk away, or don't be thirsty.`);
+  else if (def.id === 'breathe' && target === me && s.status.breath > 0) g.danger(`🤢 ${s.first} is coming to say good morning. You can smell it from here. Keep moving!`);
+  else if (def.id === 'fight' && target === me) g.danger(`🥊 ${s.first} is coming over to settle things with their fists.`);
 }

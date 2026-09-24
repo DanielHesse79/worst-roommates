@@ -186,6 +186,13 @@ export const HEADLINES = {
   Laughter: ['COMEDIAN "DEVASTATED", ALSO "A LITTLE PROUD"', 'KILLER JOKE CLAIMS ANOTHER VICTIM'],
   'Bad Breath': ['TOILET BRUSH SOUGHT FOR QUESTIONING', 'DENTISTS: "WE SAID BRUSH TWICE A DAY, NOT WITH THAT"', 'MINTY FRESH? CORONER SAYS "NOT EVEN CLOSE"'],
 };
+// Things worth knowing someone does regularly (shown on their person card once you've seen it twice).
+export const HABITS = {
+  cook: '🍳 cooks', grill: '🍖 grills', bake: '🍞 bakes', snack: '🧀 raids the fridge', swim: '🏊 swims', bath: '🛁 takes a bath',
+  radio: '📻 bathes with the radio on', usetoilet: '🚽 hogs the toilet', watch: '📺 watches TV', read: '📚 reads by the bookshelf',
+  stargaze: '🔭 stargazes', taunt: '🌠 taunts the sky', weeds: '🌿 burns the weeds', light: '🔥 lights the fire', warm: '🔥 warms up by the fire',
+  hair: '💇 does their hair', candlelit: '🕯️ relaxes by candlelight', blast: '🔊 blasts music', nap: '😴 naps', darkarts: '📜 dabbles in the dark arts',
+};
 export const EPITAPHS = ['Finally quiet.', 'Still owes rent.', 'Died as they lived: annoying.', 'Loved by no one in particular.',
   'Gone, but not missed.', 'They had it coming.', 'Here lies a terrible roommate.', 'Please do not disturb. Seriously.',
   'At least the dishes are done now.', 'Returned to sender.'];

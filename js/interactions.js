@@ -109,7 +109,7 @@ function youSawThat(g, s, o, what) {
   const me = g.player;
   if (!me || me === s || !me.alive || !g.witnesses(objCells(o)).includes(me)) return;
   o.knownBy = [...(o.knownBy || []), me.id];
-  g.log(`👀 ${me.first} saw ${s.first} ${what}. ${me.first} won't be touching that.`, 'warn');
+  g.danger(`👀 ${me.first} saw ${s.first} ${what}. ${me.first} won't be touching that.`);
 }
 
 // Skill-building: an hour of practice at the right object.
@@ -1086,6 +1086,19 @@ export function sabotageFor(pick, g) {
   return out;
 }
 
+// What doing this to someone is likely to achieve, shown under the menu entry.
+const HINTS = {
+  chat: 'They like you a bit more', insult: 'They like you less; hotheads may swing', fight: 'Whoever hits harder wins. Could be you.',
+  gaslight: 'Confuses them. Confused people have accidents', triangulate: 'Turns them against their favourite housemate',
+  lovebomb: 'They adore you, until the discard', smear: 'Everyone else likes them less', scene: 'Ruins their fun; may start fights nearby',
+  guilttrip: 'Sends them straight to the stove', lure: 'They follow you anywhere for a while', joke: 'Hurts. They might die laughing',
+  playtest: 'Drains their sanity at the computer', silent: 'Drains their fun and social life', story: 'Bores them. Slowly lethal if they are already bored',
+  drink: 'Poisons them, unless they notice', note: 'Petty. Lowers their fun', tickle: 'Hurts a little; may start a fight',
+  airhorn: 'Could stop a weak heart', whisper: 'Costs them sanity and sleep', barge: 'Humiliates them', chewloud: 'Drives them slowly mad',
+  stinkhug: 'Now they smell too', sbd: 'A gas cloud that hurts everyone near but you',
+  breathe: s => (s.status.breath > 0 ? 'Hurts. Worst when they are asleep' : 'Just gross. Brush with the toilet brush first'),
+};
+
 // Builds the pie-menu entries for whatever the player clicked.
 export function menuFor(pick, sim, game) {
   const items = [];
@@ -1097,7 +1110,11 @@ export function menuFor(pick, sim, game) {
       if (why) items.push({ label, icon: def.icon, evil: def.evil, disabled: true, note: why, run: () => {} });
       return;
     }
-    items.push({ label, icon: def.icon, evil: def.evil, run: () => sim.enqueue(def, target, 'player') });
+    // Doing something nasty to a roommate in front of the others is noted.
+    const hint = typeof HINTS[def.id] === 'function' ? HINTS[def.id](sim, target, game) : HINTS[def.id];
+    const seen = def.approachSim && def.evil ? game.witnesses([[target.cx, target.cz]]).filter(x => x !== sim && x !== target) : [];
+    const note = [hint, seen.length ? `👀 ${[...new Set(seen.map(x => x.first))].join(', ')} can see you` : ''].filter(Boolean).join(' · ');
+    items.push({ label, icon: def.icon, evil: def.evil, note, warn: seen.length > 0, run: () => sim.enqueue(def, target, 'player') });
   };
 
   switch (pick.kind) {

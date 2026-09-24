@@ -1,8 +1,8 @@
-import { TRAITS, CAUSES, PERSONALITIES, ROSTER } from './data.js';
+import { TRAITS, CAUSES, PERSONALITIES, ROSTER, HABITS } from './data.js';
 import { menuFor } from './interactions.js';
 import { TRAPS, toolPrice, toolLock } from './traps.js';
 import { JOBS, SKILLS, RENT, jobTitle, shiftPay, shiftTime } from './career.js';
-import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone, POETIC, canBeNemesis } from './contracts.js';
+import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone, POETIC, canBeNemesis, bestFor } from './contracts.js';
 import { SHOP } from './shop.js';
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
@@ -190,7 +190,7 @@ export class UI {
       : pick.kind === 'house' ? this.houseTitle(pick.side) : 'Swimming Pool';
     if (pick.kind === 'floor') title = 'Here';
     if (!items.length) items.push({ label: me ? `${me.first} can't do anything here` : 'Start a game first', icon: '🤷', run: () => {} });
-    this.showPie(items, x, y, title);
+    this.showPie(items, x, y, title, pick.kind === 'sim' ? this.personCard(pick.sim) : '');
   }
 
   // "⏩ Adam is at work until 17:00", shown while the clock races.
@@ -214,9 +214,9 @@ export class UI {
     return `🏠 The ${n.family.name}s (${n.family.trait}) · patience ${Math.max(0, Math.round(n.patience))}%${n.banned ? ' · never visiting again' : ''}`;
   }
 
-  showPie(items, x, y, title) {
+  showPie(items, x, y, title, card = '') {
     const p = this.pie;
-    p.innerHTML = `<div class="pieTitle">${esc(title)}</div>`;
+    p.innerHTML = `<div class="pieTitle">${esc(title)}</div>${card}`;
     items.forEach((it, i) => {
       const b = document.createElement('button');
       b.className = 'pieItem' + (it.evil ? ' evil' : '') + (it.sabotage ? ' god' : '') + (it.warn ? ' warn' : '');
@@ -235,6 +235,44 @@ export class UI {
   }
 
   closePie() { this.pie.classList.add('hidden'); }
+
+  // Reading people: what state a roommate is in, what they're doing, who they like and loathe, and the
+  // habits you've caught them at. This is what tells you when the moment is right.
+  personCard(t) {
+    const g = this.game, me = g.player;
+    const tag = (text, cls = '') => `<span class="pcTag ${cls}">${esc(text)}</span>`;
+    const st = t.status, n = t.needs, a = t.action;
+    const doing = st.passedOut > 0 ? '💤 Passed out' : st.swimming ? '🏊 Swimming' : a && a.stage === 'do'
+      ? `${a.def.icon} ${typeof a.def.label === 'function' ? a.def.label(t, a.target) : a.def.label}` : a ? `🚶 On the way to: ${typeof a.def.label === 'function' ? a.def.label(t, a.target) : a.def.label}` : '🧍 Idle';
+    const states = [];
+    if (n.energy < 15) states.push(tag('😴 Exhausted', 'bad')); else if (n.energy < 35) states.push(tag('🥱 Tired', 'meh'));
+    if (n.hunger < 25) states.push(tag('🍗 Hungry', 'meh'));
+    if (t.confused) states.push(tag('🌀 Confused', 'bad'));
+    if (n.fun < 25) states.push(tag('😒 Bored', 'meh'));
+    if (n.hygiene < 20) states.push(tag('🦨 Smelly', 'meh'));
+    if (st.poisoned > 0) states.push(tag('🤢 Poisoned', 'bad'));
+    if (st.breath > 0) states.push(tag('🪥 Toilet breath', 'bad'));
+    if (t.health < 50) states.push(tag(`❤️ Hurt (${Math.round(t.health)})`, 'bad'));
+    if (t.has('paranoid') || g.wary) states.push(tag('👀 On guard', 'meh'));
+    if (!states.length) states.push(tag('🙂 Doing fine'));
+    const r = me ? t.relWith(me) : 0;
+    const toYou = r >= 40 ? ['Trusts you', 'good'] : r >= 10 ? ['Likes you', 'good'] : r > -15 ? ['Neutral about you', ''] : r > -40 ? ['Dislikes you', 'meh'] : ['Wants you dead', 'bad'];
+    const others = g.sims.filter(o => o.alive && o !== t && o !== me);
+    const feelings = [];
+    const fav = others.filter(o => t.relWith(o) >= 30).sort((x, y) => t.relWith(y) - t.relWith(x))[0];
+    const foe = others.filter(o => t.relWith(o) <= -30).sort((x, y) => t.relWith(x) - t.relWith(y))[0];
+    if (fav) feelings.push(tag(`💚 Likes ${fav.first}`, 'good'));
+    if (foe) feelings.push(tag(`💢 ${t.relWith(foe) <= -40 ? 'Loathes' : 'Dislikes'} ${foe.first}`, 'bad'));
+    const habits = Object.entries(t.habits || {}).filter(([, c]) => c >= 2).sort((x, y) => y[1] - x[1]).slice(0, 3)
+      .map(([key, c]) => { const [id, when] = key.split('|'); return `${HABITS[id]} ${when} <small>(seen ${c}×)</small>`; });
+    return `<div class="personCard">
+      <div class="pcRow"><b>${esc(PERSONALITIES[t.personality].icon)} ${esc(PERSONALITIES[t.personality].name)}</b> ${t.traits.map(x => `${TRAITS[x].icon} ${esc(TRAITS[x].name)}`).join(' · ')}</div>
+      <div class="pcRow">Now: ${esc(doing)}</div>
+      <div class="pcRow">${states.join('')}</div>
+      <div class="pcRow">${tag(toYou[0], toYou[1])}${feelings.join('')}</div>
+      <div class="pcRow habits">${habits.length ? `Often: ${habits.join(' · ')}` : '<small>No habits spotted yet. Watch them for a day.</small>'}</div>
+    </div>`;
+  }
 
   // ---------- log / toast ----------
 
@@ -309,12 +347,14 @@ export class UI {
     const cards = CONTRACTS.map((c, i) => {
       const open = isUnlocked(i, p);
       const got = p.stars[c.id] || 0;
+      const best = bestFor(p, c.id);
       const missing = (c.requires || []).filter(r => !p.owned.includes(r));
       const req = missing.length ? `<div class="req">Requires from the black market: ${missing.map(r => SHOP.find(s => s.id === r).icon + ' ' + esc(SHOP.find(s => s.id === r).name)).join(', ')}</div>` : '';
       return `<div class="card ${open ? '' : 'locked'} ${got ? 'done' : ''}">
         <div class="cardHead"><b>${i + 1}. ${esc(c.title)}</b><span class="stars">${stars(got)}</span></div>
         <div class="client">Client: ${esc(c.client)}</div>
         <div class="brief">${open ? esc(c.brief) : 'Complete the previous contract to unlock.'}</div>${open ? req : ''}
+        ${open && best ? `<div class="bestLine">🏆 ${best.points} <small>as ${esc(ROSTER.find(r => r.id === best.who)?.name || best.who)}</small></div>` : ''}
         <div class="cardFoot"><span>⏳ ${c.days}d · 💵 $${c.cash} · 🪙 ${c.pay}</span>
           ${open ? `<button data-play="${i}">${got ? 'Replay' : 'Take the job'}</button>` : '<span>🔒</span>'}</div>
       </div>`;
@@ -473,7 +513,8 @@ export class UI {
       body = `<div class="bigStars">${'★'.repeat(s.count)}${'☆'.repeat(3 - s.count)}</div>
         <ul class="objs"><li class="done">★ Every target dead, and you got away with it</li>${s.bonuses.map(b => `<li class="${b.met ? 'done' : 'missed'}">${b.met ? '★' : '☆'} ${esc(b.text)}</li>`).join('')}</ul>
         <ul class="objs extras">${r.extras.map(([label, pts]) => `<li class="done">${esc(label)} <b>+${pts}</b></li>`).join('')}</ul>
-        <p class="payout">💯 ${g.score - g.scoreAtStart} points <small>(total: ${g.score})</small></p>
+        <p class="payout">💯 ${r.points} points <small>(total: ${g.score})</small></p>
+        <p class="bestLine">${r.points > r.prevBest ? `🏆 New personal best as ${esc(g.player.first)}!${r.prevBest ? ` (was ${r.prevBest})` : ''}` : `🏆 Personal best as ${esc(g.player.first)}: ${r.prevBest}`}</p>
         <p class="payout">🪙 +${r.reward} crypto <small>(wallet: ${g.profile.money})</small></p>`;
     } else {
       body = `<p class="failReason">${esc(r.reason)}</p><p class="hintLine">💡 ${esc(g.contract.hint)}</p>`;

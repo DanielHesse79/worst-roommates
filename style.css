@@ -199,6 +199,16 @@ ul.objs li.bonus { color: #ffd166; }
 ul.objs li.missed { color: #6d6070; }
 ul.objs li small { color: var(--dim); }
 .recruit.self { opacity: 0.3; pointer-events: none; }
+.bestLine { color: #ffd166; font-size: 12px; margin: 4px 0 0; }
+.bestLine small { color: var(--dim); }
+.personCard { grid-column: 1 / -1; font-size: 12px; line-height: 1.5; margin: -6px 0 4px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #e8e2f0; }
+.personCard .pcRow { margin: 2px 0; }
+.personCard .pcRow small { color: var(--dim); }
+.pcTag { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); font-size: 11px; }
+.pcTag.good { background: rgba(125, 255, 154, 0.16); color: #9dffb3; }
+.pcTag.meh { background: rgba(255, 209, 102, 0.16); color: #ffd98a; }
+.pcTag.bad { background: rgba(255, 106, 90, 0.18); color: #ff9a8e; }
 .recruit .jobLine small { color: var(--dim); }
 ul.objs li.extra { color: var(--dim); }
 ul.objs.extras b { color: #ffd166; }

@@ -3,8 +3,8 @@ import { Sim } from './sim.js';
 import { View } from './view.js';
 import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
-import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H } from './data.js';
-import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet, versusContract } from './contracts.js';
+import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H, HABITS } from './data.js';
+import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet, versusContract, bestKey } from './contracts.js';
 import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf, toolPrice, toolLock } from './traps.js';
 import { sabotageFor, plantDef } from './interactions.js';
 import { initCareer, updateCareer } from './career.js';
@@ -38,8 +38,8 @@ class Game {
   constructor() {
     this.usedNames = new Set();
     this.profile = loadProgress();
-    this.score = 0;
-    this.careerCauses = new Set();
+    this.score = this.profile.score;
+    this.careerCauses = new Set(this.profile.causes);
     this.freeLevel = 0;
     this.speed = 0;
     this.lastSpeed = 1;
@@ -287,6 +287,36 @@ class Game {
     if (!deferFail) this.checkExposed();
   }
 
+  // What you've watched a roommate do, and at what time of day: their habits go on their person card.
+  noticeHabit(sim, a) {
+    const me = this.player;
+    if (!me || sim === me || !me.alive || !HABITS[a.def.id]) return;
+    if (!this.witnesses([[sim.cx, sim.cz]]).includes(me)) return;
+    const h = (this.clock / 60) % 24;
+    const when = h < 5 ? 'at night' : h < 12 ? 'in the morning' : h < 18 ? 'in the afternoon' : h < 22 ? 'in the evening' : 'at night';
+    const key = `${a.def.id}|${when}`;
+    sim.habits = sim.habits || {};
+    sim.habits[key] = (sim.habits[key] || 0) + 1;
+  }
+
+  // The score, like the collection, is kept between sessions.
+  addScore(pts) {
+    if (!pts) return;
+    this.score += pts;
+    this.profile.score = this.score;
+    saveProgress(this.profile);
+  }
+
+  // Something is about to go badly for you: drop out of fast-forward and time-lapse so you can react.
+  danger(msg) {
+    if (this.over || !this.player || !this.player.alive) return;
+    this.log(msg, 'warn');
+    this.ui.toast(msg);
+    this.sfx('alarm');
+    this.skipHoldUntil = performance.now() + 8000;
+    if (this.speed > 1) this.setSpeed(1);
+  }
+
   // Caught and led away in handcuffs: the contract, or the free-play run, is over.
   arrest(msg) {
     const p = this.player;
@@ -375,7 +405,7 @@ class Game {
     else responderDown(this, p);
     const sus = { detective: 35, cop: 35, firefighter: 15, neighbour: 25, biker: 0 }[kind] ?? 20;
     if (this.contract) this.addSuspicion(sus, sus ? `🕵️ ${name} is dead, on your property. People will ask questions. (+${sus} suspicion)` : null);
-    else this.score += 50;
+    else this.addScore(50);
     if (kind !== 'biker' && kind !== 'detective') requestInvestigation(this, `the death of ${name}`);
     this.ui.refresh();
   }
@@ -526,9 +556,10 @@ class Game {
       pts *= this.combo;
     }
     this.lastDeathClock = this.clock;
-    this.score += pts;
     this.causes.add(cause);
     this.careerCauses.add(cause);
+    if (discovered) this.profile.causes.push(cause);
+    this.addScore(pts);
     const day = Math.floor(this.clock / 1440) + 1;
     this.deaths.push({ name: sim.name, cause, line, pts, day, role: sim.role, headline: pick(HEADLINES[cause]) });
     this.log(`${info.icon} ${sim.name} ${line}${pts ? ` +${pts}` : ''}${pts && this.combo > 1 ? ` (x${this.combo} combo!)` : ''}`, 'death');
@@ -566,7 +597,7 @@ class Game {
     if (!this.contract && !this.over && (!survivors.length || sim === this.player)) {
       this.over = true;
       this.lastBonus = sim === this.player ? 0 : Math.max(0, Math.round((3 - this.clock / 1440) * 400));
-      this.score += this.lastBonus;
+      this.addScore(this.lastBonus);
       const session = this.session;
       setTimeout(() => { if (this.session === session) this.ui.showFreeRecap(); }, 4200);
     }
@@ -592,7 +623,12 @@ class Game {
       if (hoursLeft > 0) extras.push([`⏱️ ${hoursLeft}h to spare`, hoursLeft * 10]);
       if (this.peakSuspicion < 30) extras.push(['🧼 Clean job (suspicion stayed under 30)', 300]);
       if (!this.seenSabotage) extras.push(['🥷 Nobody ever saw you do it', 200]);
-      for (const [, pts] of extras) this.score += pts;
+      for (const [, pts] of extras) this.addScore(pts);
+      // Personal best for this contract with this character.
+      const key = bestKey(this.contract.id, this.charId), points = this.score - this.scoreAtStart;
+      this.result.points = points;
+      this.result.prevBest = this.profile.best[key] || 0;
+      if (points > this.result.prevBest) this.profile.best[key] = points;
     }
     this.over = true;
     if (won) {

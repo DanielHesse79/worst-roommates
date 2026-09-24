@@ -366,7 +366,7 @@ export class Sim {
         a.data.partner = t;
       }
       if (def.start && def.start(this, a.target, game, a) === false) { this.endAction(); return; }
-      if (this.alive && this.action === a) game.dialogue.action(this, a);
+      if (this.alive && this.action === a) { game.dialogue.action(this, a); game.noticeHabit(this, a); }
       this.moving = false;
     } else {
       const fp = def.facePos ? def.facePos(this, a.target, game) : (a.target && a.target.x !== undefined ? [a.target.x, a.target.z] : null);
