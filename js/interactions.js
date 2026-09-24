@@ -72,9 +72,10 @@ function lawnFire(g, s, n) {
   const cells = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]].sort(() => Math.random() - 0.5);
   for (const [dx, dz] of cells) if (n > 0 && g.world.ignite(s.cx + dx, s.cz + dz, true)) n--;
 }
+// Practice tops out at 10. Anyone born above that (Asraa's charisma goes to eleven) keeps it.
 function learn(s, skill) {
-  const gain = s.has('genius') ? 2 : s.has('lazy') ? 0.5 : 1;
-  s.skills[skill] = Math.min(10, (s.skills[skill] || 0) + gain);
+  const gain = s.has('genius') ? 2 : s.has('lazy') ? 0.5 : 1, now = s.skills[skill] || 0;
+  s.skills[skill] = Math.max(now, Math.min(10, now + gain));
 }
 // A kitchen fire. With the gas valve loosened, the cook goes up with it; otherwise they jump back in time.
 function kitchenFire(s, o, g, gas, what) {
