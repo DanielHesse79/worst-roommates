@@ -135,10 +135,11 @@ export function updateCareer(g, min) {
   const day = Math.floor(g.clock / 1440);
   if (day > g.billDay) {
     g.billDay = day;
-    g.cash -= RENT;
+    const rent = g.rent ?? RENT;
+    g.cash -= rent;
     if (g.cash >= 0) {
       g.debtDays = 0;
-      g.log(`🧾 Rent and bills: -$${RENT}. 💵 $${Math.floor(g.cash)} left.`, 'dim');
+      g.log(`🧾 Rent and bills: -$${rent}. 💵 $${Math.floor(g.cash)} left.`, 'dim');
     } else if (++g.debtDays >= 2) {
       g.log(`🧾 Rent bounces again. The landlord changes the locks.`, 'warn');
       if (g.contract) g.endContract(false, `Evicted. ${p.first} couldn't pay the rent two nights running.`);

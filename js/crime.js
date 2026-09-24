@@ -37,7 +37,7 @@ function reaction(g, me, x, victim) {
   if (x.kind === 'biker') return { kind: 'cheer' };
   // Neighbours who have had it with this house don't much care what happens in it.
   if (x.kind === 'visitor' && x.visitKind === 'neighbour' && g.visit && g.visit.side && g.neighbours[g.visit.side].patience < 30) return { kind: 'cover', fedUp: true };
-  const smooth = (me.skills.charisma || 0) * 0.07;   // "It's not what it looks like!"
+  const smooth = Math.max(0, (me.skills.charisma || 0) * 0.07 + (g.diff ? g.diff.talk : 0));   // "It's not what it looks like!"
   if (!x.rel) return { kind: Math.random() < smooth / 2 ? 'talk' : 'report' };
   const v = meantFor(g, x, victim);
   if (v === x) return { kind: Math.random() < smooth / 2 ? 'talk' : 'report', mine: true };

@@ -1,8 +1,8 @@
 import { TRAITS, CAUSES, PERSONALITIES, ROSTER, HABITS } from './data.js';
 import { menuFor } from './interactions.js';
 import { TRAPS, toolPrice, toolLock } from './traps.js';
-import { JOBS, SKILLS, RENT, jobTitle, shiftPay, shiftTime } from './career.js';
-import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone, POETIC, canBeNemesis, bestFor } from './contracts.js';
+import { JOBS, SKILLS, jobTitle, shiftPay, shiftTime } from './career.js';
+import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone, POETIC, canBeNemesis, bestFor, DIFFICULTIES, starKey } from './contracts.js';
 import { SHOP } from './shop.js';
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
@@ -61,6 +61,8 @@ export class UI {
     this.$('contractList').addEventListener('click', e => {
       const buy = e.target.closest('button[data-buy]');
       if (buy) { if (g.buy(buy.dataset.buy)) this.showBoard(); return; }
+      const level = e.target.closest('button[data-diff]');
+      if (level) { g.setDifficulty(level.dataset.diff); g.sfx('click'); this.showBoard(); return; }
       const b = e.target.closest('button[data-play]');
       if (!b) return;
       const v = b.dataset.play;
@@ -367,14 +369,15 @@ export class UI {
   // ---------- contracts ----------
 
   showBoard() {
-    const g = this.game, p = g.profile;
+    const g = this.game, p = g.profile, diff = p.difficulty || 'normal', d = DIFFICULTIES[diff];
+    const days = n => Math.max(2, n + d.days);
     const stars = n => '★'.repeat(n) + '☆'.repeat(3 - n);
     const resume = g.started && !g.over
       ? `<div class="resumeRow"><button data-play="resume">▶ Resume current game</button></div>` : '';
     const cards = CONTRACTS.map((c, i) => {
       const open = isUnlocked(i, p);
-      const got = p.stars[c.id] || 0;
-      const best = bestFor(p, c.id);
+      const got = p.stars[starKey(c.id, diff)] || 0;
+      const best = bestFor(p, c.id, diff);
       const missing = (c.requires || []).filter(r => !p.owned.includes(r));
       const req = missing.length ? `<div class="req">Requires from the black market: ${missing.map(r => SHOP.find(s => s.id === r).icon + ' ' + esc(SHOP.find(s => s.id === r).name)).join(', ')}</div>` : '';
       return `<div class="card ${open ? '' : 'locked'} ${got ? 'done' : ''}">
@@ -382,7 +385,7 @@ export class UI {
         <div class="client">Client: ${esc(c.client)}</div>
         <div class="brief">${open ? esc(c.brief) : 'Complete the previous contract to unlock.'}</div>${open ? req : ''}
         ${open && best ? `<div class="bestLine">🏆 ${best.points} <small>as ${esc(ROSTER.find(r => r.id === best.who)?.name || best.who)}</small></div>` : ''}
-        <div class="cardFoot"><span>⏳ ${c.days}d · 💵 $${c.cash} · 🪙 ${c.pay}</span>
+        <div class="cardFoot"><span>⏳ ${days(c.days)}d · 💵 $${Math.round(c.cash * d.cash)} · 🪙 ${Math.round(c.pay * d.pay)}</span>
           ${open ? `<button data-play="${i}">${got ? 'Replay' : 'Take the job'}</button>` : '<span>🔒</span>'}</div>
       </div>`;
     }).join('');
@@ -391,7 +394,7 @@ export class UI {
       <div class="cardFoot"><span></span><button data-play="free">Play</button></div></div>
       <div class="card free versus"><div class="cardHead"><b>⚔️ Sim vs Sim</b></div>
       <div class="brief">Pick who you are and who you'd most like to see dead. Your nemesis moves in with all their talents, and hates you right back.</div>
-      <div class="cardFoot"><span>⏳ 4d · 💵 $150 · 🪙 200</span><button data-play="versus">Pick a fight</button></div></div>`;
+      <div class="cardFoot"><span>⏳ ${days(4)}d · 💵 $${Math.round(150 * d.cash)} · 🪙 ${Math.round(200 * d.pay)}</span><button data-play="versus">Pick a fight</button></div></div>`;
     const market = SHOP.map(item => {
       const owned = p.owned.includes(item.id);
       const afford = p.money >= item.price;
@@ -399,7 +402,10 @@ export class UI {
         <span class="si">${item.icon}</span><div class="sn"><b>${esc(item.name)}</b><small>${esc(item.desc)}</small></div>
         ${owned ? '<span class="got">Owned</span>' : `<button data-buy="${item.id}" ${afford ? '' : 'disabled'}>🪙 ${item.price}</button>`}</div>`;
     }).join('');
-    this.$('contractList').innerHTML = resume + `<h2 class="sectionLabel">Choose your arrangement <span>11 ways to be a terrible roommate</span></h2><div class="cards">${cards}${free}</div>
+    const levels = `<div class="diffRow"><span class="diffLabel">Difficulty</span>${Object.entries(DIFFICULTIES).map(([k, v]) =>
+      `<button data-diff="${k}" class="${k === diff ? 'on' : ''}">${v.icon} ${esc(v.name)}</button>`).join('')}
+      <small>${esc(d.desc)} Stars and records are kept per difficulty.${g.started && !g.over ? ' Applies to the next game you start.' : ''}</small></div>`;
+    this.$('contractList').innerHTML = resume + levels + `<h2 class="sectionLabel">Choose your arrangement <span>11 ways to be a terrible roommate</span></h2><div class="cards">${cards}${free}</div>
       <h2 class="marketTitle">🕶️ Black Market <span class="wallet">🪙 ${p.money} crypto</span></h2>
       <div class="market">${market}</div>`;
     this.$('howTo').open = false;
@@ -507,7 +513,7 @@ export class UI {
     const sus = Math.round(g.suspicion);
     const susCls = sus >= 75 ? 'hot' : sus >= 50 ? 'warm' : '';
     this.setHTML(el, `
-      <div class="hudTitle">📋 ${esc(c.title)}</div>
+      <div class="hudTitle">📋 ${esc(c.title)} <small title="${esc(g.diff.name)}">${g.diff.icon}</small></div>
       <div class="deadline ${hrs < 6 ? 'urgent' : ''}">⏳ ${hrs}h ${Math.floor(left % 60)}m left (end of Day ${c.days})</div>
       <ul class="objs">${objs}${bonus}</ul>
       <div class="susRow"><span>🕵️ Suspicion</span><div class="susTrack"><div class="susFill ${susCls}" style="width:${sus}%"></div><i style="left:50%"></i></div><em>${sus}</em></div>${work}`);
@@ -526,7 +532,7 @@ export class UI {
       <div class="jobRow"><b>💼 ${esc(jobTitle(j))}</b><span>$${shiftPay(j)}/shift</span></div>
       <div class="perfRow"><span>Performance</span><div class="susTrack"><div class="susFill perf" style="width:${perf}%"></div></div><em>${perf}</em></div>
       <div class="jobState ${j.state === 'going' ? 'urgent' : ''}">${state}${j.missed ? ` · missed ${j.missed}/3` : ''}</div>
-      <div class="rentRow ${g.cash < RENT ? 'urgent' : ''}">🧾 Rent $${RENT} at midnight${g.cash < 0 ? ` · $${Math.ceil(-g.cash)} in debt!` : ''}</div>
+      <div class="rentRow ${g.cash < g.rent ? 'urgent' : ''}">🧾 Rent $${g.rent} at midnight${g.cash < 0 ? ` · $${Math.ceil(-g.cash)} in debt!` : ''}</div>
     </div>`;
   }
 
@@ -541,8 +547,9 @@ export class UI {
         <ul class="objs"><li class="done">★ Every target dead, and you got away with it</li>${s.bonuses.map(b => `<li class="${b.met ? 'done' : 'missed'}">${b.met ? '★' : '☆'} ${esc(b.text)}</li>`).join('')}</ul>
         <ul class="objs extras">${r.extras.map(([label, pts]) => `<li class="done">${esc(label)} <b>+${pts}</b></li>`).join('')}</ul>
         <p class="payout">💯 ${r.points} points <small>(total: ${g.score})</small></p>
-        <p class="bestLine">${r.points > r.prevBest ? `🏆 New personal best as ${esc(g.player.first)}!${r.prevBest ? ` (was ${r.prevBest})` : ''}` : `🏆 Personal best as ${esc(g.player.first)}: ${r.prevBest}`}</p>
-        <p class="payout">🪙 +${r.reward} crypto <small>(wallet: ${g.profile.money})</small></p>`;
+        <p class="bestLine">${r.points > r.prevBest ? `🏆 New personal best as ${esc(g.player.first)} on ${g.diff.icon}!${r.prevBest ? ` (was ${r.prevBest})` : ''}` : `🏆 Personal best as ${esc(g.player.first)}: ${r.prevBest}`}</p>
+        <p class="payout">🪙 +${r.reward} crypto <small>(wallet: ${g.profile.money})</small></p>
+        <p class="bestLine">Played on ${g.diff.icon} ${esc(g.diff.name)}${g.difficulty !== 'hard' ? '. Can you do it on 💀 Total Chaos?' : '.'}</p>`;
     } else {
       body = `<p class="failReason">${esc(r.reason)}</p><p class="hintLine">💡 ${esc(g.contract.hint)}</p>`;
     }

@@ -35,7 +35,7 @@ function weightedPick(opts) {
 }
 
 function pickEvil(s, g) {
-  const chance = 0.1 + (s.evil - 50) / 300 + (s.has('hotheaded') ? 0.08 : 0) + (s.mood() < 35 ? 0.08 : 0);
+  const chance = (0.1 + (s.evil - 50) / 300 + (s.has('hotheaded') ? 0.08 : 0) + (s.mood() < 35 ? 0.08 : 0)) * (g.diff ? g.diff.hostile : 1);
   if (Math.random() > chance) return null;
   const o = id => g.world.objects.get(id);
   const opts = [];

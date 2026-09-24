@@ -4,7 +4,7 @@ import { View } from './view.js';
 import { UI } from './ui.js';
 import { runAutonomy } from './autonomy.js';
 import { CAUSES, DEATH_SUSPICION, MIN_PER_SEC, ROSTER, IMMORTAL_LINES, HEADLINES, EPITAPHS, REAPER_QUIPS, GRID_W, GRID_H, HABITS } from './data.js';
-import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet, versusContract, bestKey } from './contracts.js';
+import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet, versusContract, bestKey, starKey, DIFFICULTIES, atDifficulty } from './contracts.js';
 import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf, toolPrice, toolLock } from './traps.js';
 import { sabotageFor, plantDef, seesThrough } from './interactions.js';
 import { updateFavours } from './crime.js';
@@ -62,6 +62,10 @@ class Game {
   // contract === null means free play (a random household, no suspicion). You play one character
   // (charId); everyone else is a target who lives, schemes and fights back on their own.
   setup(contract, charId = null) {
+    this.difficulty = DIFFICULTIES[this.profile.difficulty] ? this.profile.difficulty : 'normal';
+    this.diff = DIFFICULTIES[this.difficulty];
+    if (contract) contract = atDifficulty(contract, this.difficulty);
+    this.rent = this.diff.rent;
     this.contract = contract;
     this.sims = [];
     const me = charId ? [{ ...ROSTER.find(r => r.id === charId), role: 'player' }] : [];
@@ -127,7 +131,7 @@ class Game {
     this.seenSabotage = false;
     this.oilSlick = 0;
     this.favours = [];
-    initCareer(this, charId, (contract ? contract.cash : 200) + (this.upgrade('pockets') ? 100 : 0));
+    initCareer(this, charId, Math.round((contract ? contract.cash : 200) * this.diff.cash) + (this.upgrade('pockets') ? 100 : 0));
     if (contract && contract.setup) contract.setup(this);
   }
 
@@ -175,7 +179,7 @@ class Game {
   introduceJob() {
     const j = this.job, p = this.player;
     if (!j || !j.def || !p) return;
-    this.log(`💼 You are ${p.name}, ${j.def.titles[0]}. Shifts ${String(j.def.start).padStart(2, '0')}:00 for ${j.def.hours}h pay $${j.def.pay[0]}. Rent is $40 a night. 💵 You start with $${this.cash}.`, 'tool');
+    this.log(`💼 You are ${p.name}, ${j.def.titles[0]}. Shifts ${String(j.def.start).padStart(2, '0')}:00 for ${j.def.hours}h pay $${j.def.pay[0]}. Rent is $${this.rent} a night. 💵 You start with $${this.cash}.`, 'tool');
     this.log(`🌆 It's your first evening in the house. Look around, get to know your roommates, plan something nasty and get some sleep. Work and sleep fly by in time-lapse (⏩).`, 'dim');
   }
 
@@ -213,6 +217,12 @@ class Game {
     return true;
   }
   get isNight() { const h = (this.clock / 60) % 24; return h >= 20 || h < 5; }
+
+  setDifficulty(diff) {
+    if (!DIFFICULTIES[diff]) return;
+    this.profile.difficulty = diff;
+    saveProgress(this.profile);
+  }
 
   setSpeed(i) {
     if (i > 0) this.lastSpeed = i;
@@ -629,16 +639,16 @@ class Game {
       if (!this.seenSabotage) extras.push(['🥷 Nobody ever saw you do it', 200]);
       for (const [, pts] of extras) this.addScore(pts);
       // Personal best for this contract with this character.
-      const key = bestKey(this.contract.id, this.charId), points = this.score - this.scoreAtStart;
+      const key = bestKey(this.contract.id, this.charId, this.difficulty), points = this.score - this.scoreAtStart;
       this.result.points = points;
       this.result.prevBest = this.profile.best[key] || 0;
       if (points > this.result.prevBest) this.profile.best[key] = points;
     }
     this.over = true;
     if (won) {
-      const id = this.contract.id;
+      const id = starKey(this.contract.id, this.difficulty);
       const prev = this.profile.stars[id] || 0;
-      this.result.reward = contractReward(this.contract, stars.count, prev);
+      this.result.reward = Math.round(contractReward(this.contract, stars.count, prev) * this.diff.pay);
       this.profile.stars[id] = Math.max(prev, stars.count);
       this.profile.money += this.result.reward;
       saveProgress(this.profile);
@@ -725,7 +735,7 @@ class Game {
     if (this.contract && !this.result) {
       // Airtight alibi and a resident legal expert (Asraa Z) each double how fast suspicion fades.
       const lawyer = !!this.player && this.player.rosterId === 'asraa' && this.player.alive;
-      const fade = 0.5 * (this.upgrade('alibi') ? 2 : 1) * (lawyer ? 2 : 1);
+      const fade = 0.5 * (this.upgrade('alibi') ? 2 : 1) * (lawyer ? 2 : 1) * this.diff.fade;
       this.suspicion = Math.max(0, this.suspicion - fade * min / 60);
       if (this.clock >= this.contract.days * 1440) this.endContract(false, `Time ran out. The deadline was the end of Day ${this.contract.days}.`);
     }

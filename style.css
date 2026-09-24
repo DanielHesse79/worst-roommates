@@ -210,6 +210,12 @@ ul.objs li small { color: var(--dim); }
 .pcTag.meh { background: rgba(255, 209, 102, 0.16); color: #ffd98a; }
 .pcTag.bad { background: rgba(255, 106, 90, 0.18); color: #ff9a8e; }
 #choiceOptions { display: grid; gap: 8px; margin-top: 12px; }
+.diffRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 14px; }
+.diffRow .diffLabel { font-weight: 700; margin-right: 4px; }
+.diffRow button { padding: 6px 12px; opacity: 0.6; }
+.diffRow button.on { opacity: 1; outline: 2px solid #dde8a9; }
+.diffRow small { flex-basis: 100%; color: var(--dim); }
+.hudTitle small { font-size: 14px; }
 .choiceBtn { text-align: left; padding: 10px 12px; }
 .choiceBtn small { display: block; font-size: 11px; opacity: 0.75; font-weight: 400; margin-top: 2px; }
 .recruit .jobLine small { color: var(--dim); }

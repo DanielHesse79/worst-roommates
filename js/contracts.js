@@ -230,22 +230,42 @@ export function loadProgress() {
   let p = {};
   try { p = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { p = {}; }
   return { stars: p.stars || {}, money: p.money || 0, owned: p.owned || [], character: p.character || (p.crew || [])[0] || null,
-    score: p.score || 0, causes: p.causes || [], best: p.best || {} };
+    score: p.score || 0, causes: p.causes || [], best: p.best || {}, difficulty: p.difficulty || 'normal' };
 }
 
-// Personal bests are kept per contract and character: "pool|gloria" -> points.
-export const bestKey = (contractId, charId) => `${contractId}|${charId}`;
-export function bestFor(profile, contractId) {
+// How hard the house fights back. The same information and controls at every level: the difference is
+// money, time, how quickly the police move, how easily witnesses are talked round, how fast suspicion
+// fades and how often the others strike first.
+export const DIFFICULTIES = {
+  easy: { name: 'Brat', icon: '😈', desc: 'For learning and messing about: more money, cheaper rent, an extra day, slow police, forgiving witnesses, and roommates who rarely strike back.',
+    cash: 1.5, rent: 25, days: 1, police: 1.6, fade: 1.6, talk: 0.15, hostile: 0.5, pay: 0.75 },
+  normal: { name: 'Plotter', icon: '🗡️', desc: 'The game as intended: plan ahead, and improvise when it goes wrong.',
+    cash: 1, rent: 40, days: 0, police: 1, fade: 1, talk: 0, hostile: 1, pay: 1 },
+  hard: { name: 'Total Chaos', icon: '💀', desc: 'For masters of the house: tight money, a day less, fast police, sharp witnesses, and roommates who strike first.',
+    cash: 0.7, rent: 55, days: -1, police: 0.6, fade: 0.6, talk: -0.1, hostile: 1.6, pay: 1.5 },
+};
+
+// A contract as played at a difficulty: the deadline (and the "finish early" star with it) moves.
+export function atDifficulty(contract, diff) {
+  const d = DIFFICULTIES[diff], shift = n => Math.max(2, n + d.days);
+  return { ...contract, days: shift(contract.days), bonus: contract.bonus.map(b => (b.type === 'before' ? { ...b, day: shift(b.day) } : b)) };
+}
+
+// Stars and personal bests are kept per difficulty. Plotter (normal) keeps the original keys.
+export const starKey = (contractId, diff) => (diff === 'normal' ? contractId : `${contractId}@${diff}`);
+export const bestKey = (contractId, charId, diff = 'normal') => `${contractId}|${charId}${diff === 'normal' ? '' : '|' + diff}`;
+export function bestFor(profile, contractId, diff = 'normal') {
   let top = null;
-  for (const [key, points] of Object.entries(profile.best)) {
-    const [id, who] = key.split('|');
-    if (id === contractId && (!top || points > top.points)) top = { points, who };
+  for (const [key, points] of Object.entries(profile.best || {})) {
+    const [id, who, level = 'normal'] = key.split('|');
+    if (id === contractId && level === diff && (!top || points > top.points)) top = { points, who };
   }
   return top;
 }
 export function saveProgress(p) {
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* storage unavailable: progress lasts this session */ }
 }
+// Beating the previous contract at any difficulty opens the next one.
 export function isUnlocked(i, profile) {
-  return i === 0 || (profile.stars[CONTRACTS[i - 1].id] || 0) > 0;
+  return i === 0 || Object.keys(DIFFICULTIES).some(d => (profile.stars[starKey(CONTRACTS[i - 1].id, d)] || 0) > 0);
 }

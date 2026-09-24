@@ -400,7 +400,7 @@ export function reportCrime(g, tip) {
   if (!inv) {
     g.policeCooldown = 0;
     requestInvestigation(g, `${tip.by}'s call`);
-    if (g.investigation) g.investigation.t = rand(15, 30);
+    if (g.investigation) g.investigation.t = rand(15, 30) * (g.diff ? g.diff.police : 1);
   } else if (inv.state === 'searching') {
     takeStatements(g, inv);
   } else if (inv.state === 'leaving' || inv.state === 'gone') {
@@ -430,7 +430,7 @@ function takeStatements(g, inv) {
 
 export function requestInvestigation(g, reason) {
   if (g.over || g.investigation || g.clock < g.policeCooldown) return;
-  g.investigation = { state: 'pending', t: rand(40, 80), reason, found: 0, done: new Set() };
+  g.investigation = { state: 'pending', t: rand(40, 80) * (g.diff ? g.diff.police : 1), reason, found: 0, done: new Set() };
 }
 
 // Sends the detective home early (charmed, bored or tricked away).
