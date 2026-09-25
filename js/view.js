@@ -415,6 +415,7 @@ export class View {
     this.scene.fog.color.copy(sky);
     const night = day < 0.35 ? 1 - day / 0.35 : 0;
     for (const l of this.lot.lights) l.intensity = 3 * night;
+    for (const b of this.lot.lampBulbs) b.emissiveIntensity = 0.2 + 2.4 * night;
     for (const bulb of this.lot.fairyBulbs) bulb.material.emissiveIntensity = 0.5 + 2 * night;
     for (const { bulb, light } of this.lot.garden.lamps) {
       light.intensity = 6 * night;
@@ -459,11 +460,16 @@ export class View {
 
   syncWalls(dt) {
     // The roof sits on full-height walls.
-    const full = this.wallsUp || this.roofOn || this.eyesOpen();
+    const inside = this.eyesOpen();
+    const full = this.wallsUp || this.roofOn || inside;
     const goal = full ? WALL_H : CUT_H;
-    this.wallH += (goal - this.wallH) * (1 - Math.exp(-dt * 10));
+    // In first person you're already inside: no walls rising around you.
+    this.wallH = inside ? goal : this.wallH + (goal - this.wallH) * (1 - Math.exp(-dt * 10));
     for (const m of this.lot.walls) m.scale.y = this.wallH;
     this.lot.roof.visible = this.roofOn && this.wallH > WALL_H - 0.05;
+    // Paintings hang once the walls are up; the ceiling and its lamps are for first person only.
+    for (const p of this.lot.paintings) p.visible = this.wallH > WALL_H - 0.3;
+    for (const c of this.lot.ceiling) c.visible = inside;
     for (const d of this.game.world.doors) {
       const v = this.lot.doors.get(d.id);
       v.brick.visible = d.bricked;
@@ -471,7 +477,7 @@ export class View {
       v.lintel.visible = !d.bricked && full;
     }
     for (const { cap, wall } of this.lot.caps) {
-      cap.visible = wall.visible;
+      cap.visible = wall.visible && !inside;
       cap.position.y = this.wallH + 0.025;
     }
   }

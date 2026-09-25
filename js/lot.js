@@ -4,6 +4,7 @@ import { GRID_W, GRID_H, ROOMS, WALLS, POOL } from './data.js';
 import { mat, box, floorTexture, buildFurniture } from './models.js';
 import { buildGarden } from './garden.js';
 import { dressLot } from './decor.js';
+import { decorateInterior } from './interior.js';
 
 export const WALL_H = 2.2;
 const THICK = 0.12;
@@ -47,7 +48,8 @@ function facingFor(o) {
 // Unit-height wall geometry with its base at y=0, so scale.y == height.
 const wallGeoX = new THREE.BoxGeometry(THICK, 1, 1).translate(0, 0.5, 0);
 const wallGeoZ = new THREE.BoxGeometry(1, 1, THICK).translate(0, 0.5, 0);
-const postGeo = new THREE.BoxGeometry(THICK + 0.02, 1, THICK + 0.02).translate(0, 0.5, 0);
+// Corner posts fill the gaps where wall pieces meet; a hair thinner than the walls, so wallpaper covers them.
+const postGeo = new THREE.BoxGeometry(THICK - 0.004, 1, THICK - 0.004).translate(0, 0.5, 0);
 
 function wallMesh(axis, at, i, material) {
   const m = new THREE.Mesh(axis === 'x' ? wallGeoX : wallGeoZ, material);
@@ -101,6 +103,7 @@ export function buildLot(scene, world) {
   const brickMat = mat(0xa4513d);
   const posts = new Set();
   const doorAt = new Map(world.doors.map(d => [`${d.axis}:${d.at}:${d.pos}`, d]));
+  const pieces = []; // plain wall pieces, for wallpaper (interior.js)
   for (const w of WALLS) {
     for (let i = w.from; i < w.to; i++) {
       if (w.axis === 'x') { posts.add(`${w.at},${i}`); posts.add(`${w.at},${i + 1}`); } else { posts.add(`${i},${w.at}`); posts.add(`${i + 1},${w.at}`); }
@@ -109,6 +112,7 @@ export function buildLot(scene, world) {
         const m = wallMesh(w.axis, w.at, i, wallMat);
         scene.add(m);
         out.walls.push(m);
+        pieces.push({ wall: m, axis: w.axis, at: w.at, i });
         continue;
       }
       const brick = wallMesh(w.axis, w.at, i, brickMat);
@@ -170,6 +174,7 @@ export function buildLot(scene, world) {
     out.hits.set(o.id, hit);
   }
   dressLot(scene, out);
+  decorateInterior(scene, out, pieces, WALL_H);
   out.roof = buildRoof();
   scene.add(out.roof);
   return out;
