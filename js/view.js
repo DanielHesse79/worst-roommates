@@ -10,7 +10,10 @@ import { SpeechView } from './speech-view.js';
 const CUT_H = 0.55;
 const CAM_KEY = 'worst-roommates-camera';
 // Isometric (the classic view), a free 3D perspective, or a perspective that follows your character.
-export const CAM_MODES = { iso: { icon: '📐', name: 'Isometric' }, persp: { icon: '🎥', name: '3D' }, follow: { icon: '🎬', name: 'Follow' } };
+export const CAM_MODES = { iso: { icon: '📐', name: 'Isometric' }, persp: { icon: '🎥', name: '3D' }, follow: { icon: '🎬', name: 'Follow' },
+  fpv: { icon: '👁️', name: 'First person' } };
+const WALK = 2.1;                  // your own walking speed in first person, world units per real second
+const EYE = 1.32, EYE_SWIM = 0.55; // eye height standing and swimming
 const PERSP_DIST = 32;             // camera distance at zoom 1 in the perspective modes
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const CHARRED = mat(0x1d1714);
@@ -30,6 +33,10 @@ export class View {
     this.scene.fog = new THREE.Fog(0x9fc5e8, 50, 100);
     this.ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
     this.persp = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
+    this.eyeCam = new THREE.PerspectiveCamera(72, 1, 0.05, 200);
+    // First person: where you're looking. It drifts back to where your character faces unless you've
+    // just looked around yourself.
+    this.look = { yaw: 0, pitch: -0.12, manual: 0 };
     // Target sits right of the lot centre so the house isn't hidden behind the right-hand sidebar.
     this.cam = { target: new THREE.Vector3(GRID_W / 2 + 2, 0, GRID_H / 2 - 1), angle: Math.PI / 4, goal: Math.PI / 4, zoom: 1.0, pitch: 0.8 };
     let mode = null;
@@ -113,7 +120,7 @@ export class View {
       if (!down) return;
       const dx = e.clientX - down.lx, dy = e.clientY - down.ly;
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) down.moved = true;
-      if (down.moved && down.orbit) this.orbit(dx, dy);
+      if (down.moved && (down.orbit || this.camMode === 'fpv')) this.orbit(dx, dy);
       else if (down.moved) this.panPixels(dx, dy);
       down.lx = e.clientX; down.ly = e.clientY;
     });
@@ -123,12 +130,14 @@ export class View {
     });
     c.addEventListener('wheel', e => {
       e.preventDefault();
+      if (this.camMode === 'fpv') { this.eyeCam.fov = clamp(this.eyeCam.fov + (e.deltaY > 0 ? 4 : -4), 45, 90); return; }
       this.cam.zoom = Math.max(0.5, Math.min(3, this.cam.zoom * (e.deltaY > 0 ? 0.9 : 1.1)));
     }, { passive: false });
     window.addEventListener('keydown', e => {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
       this.keys.add(k);
+      if (this.camMode === 'fpv' && (k === 'q' || k === 'e')) { this.look.yaw += k === 'q' ? Math.PI / 4 : -Math.PI / 4; this.look.manual = 3; return; }
       if (k === 'q') this.cam.goal += Math.PI / 2;
       if (k === 'e') this.cam.goal -= Math.PI / 2;
     });
@@ -154,8 +163,14 @@ export class View {
     this.clampTarget();
   }
 
-  // Turn the view freely; in the perspective modes, tilt it too.
+  // Turn the view freely; in the perspective modes, tilt it too. In first person, look around.
   orbit(dx, dy) {
+    if (this.camMode === 'fpv') {
+      this.look.yaw -= dx * 0.005;
+      this.look.pitch = clamp(this.look.pitch - dy * 0.004, -1.1, 0.9);
+      this.look.manual = 3;
+      return;
+    }
     this.cam.angle -= dx * 0.008;
     this.cam.goal = this.cam.angle;
     if (this.camMode !== 'iso') this.cam.pitch = clamp(this.cam.pitch + dy * 0.006, 0.22, 1.4);
@@ -163,7 +178,8 @@ export class View {
 
   setCameraMode(mode) {
     this.camMode = mode;
-    this.camera = mode === 'iso' ? this.ortho : this.persp;
+    this.camera = mode === 'iso' ? this.ortho : mode === 'fpv' ? this.eyeCam : this.persp;
+    if (mode === 'fpv' && this.game.player) { this.look.yaw = this.game.player.facing || 0; this.look.pitch = -0.12; this.look.manual = 0; }
     if (mode === 'follow') { this.cam.zoom = Math.max(this.cam.zoom, 1.7); this.cam.pitch = 0.55; }
     else if (mode === 'persp') this.cam.pitch = clamp(this.cam.pitch, 0.6, 1.1);
     try { localStorage.setItem(CAM_KEY, mode); } catch { /* this session only */ }
@@ -180,17 +196,25 @@ export class View {
     t.z = Math.max(-2, Math.min(GRID_H + 2, t.z));
   }
 
+  // First person is only possible while you're alive and at home.
+  eyesOpen() {
+    const p = this.game.player;
+    return this.camMode === 'fpv' && !!p && p.alive && !p.status.away;
+  }
+
   updateCamera(dt) {
+    if (this.eyesOpen()) { this.updateEyes(dt); return; }
+    if (this.camMode === 'fpv') this.camera = this.persp;
     const k = this.keys, sp = 12 * dt / this.cam.zoom;
     let px = 0, pz = 0;
     if (k.has('w') || k.has('arrowup')) pz -= 1;
     if (k.has('s') || k.has('arrowdown')) pz += 1;
     if (k.has('a') || k.has('arrowleft')) px -= 1;
     if (k.has('d') || k.has('arrowright')) px += 1;
-    if (px || pz) this.panPixels(-px * sp / this.worldPerPixel(), -pz * sp / this.worldPerPixel() / this.depthScale());
+    if ((px || pz) && this.camMode !== 'fpv') this.panPixels(-px * sp / this.worldPerPixel(), -pz * sp / this.worldPerPixel() / this.depthScale());
     this.cam.angle += (this.cam.goal - this.cam.angle) * (1 - Math.exp(-dt * 8));
     const a = this.cam.angle, t = this.cam.target;
-    if (this.camMode === 'follow') {
+    if (this.camMode === 'follow' || this.camMode === 'fpv') {
       const p = this.game.player;
       if (p && p.alive && !p.status.away) {
         const k = 1 - Math.exp(-dt * 4);
@@ -217,6 +241,58 @@ export class View {
       this.camera.aspect = this.aspect;
     }
     this.camera.updateProjectionMatrix();
+  }
+
+  // Through your character's eyes: WASD walks, dragging looks around, and the view settles back to
+  // wherever your character is facing (the stove they're cooking at, the person they're talking to).
+  updateEyes(dt) {
+    const p = this.game.player, L = this.look, k = this.keys;
+    this.camera = this.eyeCam;
+    let f = 0, s = 0;
+    if (k.has('w') || k.has('arrowup')) f += 1;
+    if (k.has('s') || k.has('arrowdown')) f -= 1;
+    if (k.has('a') || k.has('arrowleft')) s -= 1;
+    if (k.has('d') || k.has('arrowright')) s += 1;
+    const walking = (f || s) && this.walkPlayer(f, s, dt);
+    L.manual = Math.max(0, L.manual - dt);
+    if (!L.manual && !walking) L.yaw = lerpAngle(L.yaw, p.facing || 0, 1 - Math.exp(-dt * 3));
+    const eye = new THREE.Vector3(p.x, p.status.swimming ? EYE_SWIM : EYE, p.z);
+    const dir = new THREE.Vector3(Math.sin(L.yaw) * Math.cos(L.pitch), Math.sin(L.pitch), Math.cos(L.yaw) * Math.cos(L.pitch));
+    this.camera.position.copy(eye);
+    this.camera.lookAt(eye.add(dir));
+    if (this.shake > 0) {
+      this.shake -= dt;
+      this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.3;
+      this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.3;
+    }
+    this.camera.aspect = this.aspect;
+    this.camera.updateProjectionMatrix();
+    this.cam.target.set(p.x, 0, p.z); // other views pick up where you are
+  }
+
+  // Your own two feet: forward/back and sideways relative to where you're looking. Walls, furniture and
+  // the pool stop you (you slide along them); stepping yourself cancels whatever you were doing.
+  walkPlayer(f, s, dt) {
+    const g = this.game, p = g.player, st = p.status;
+    if (g.speed === 0 || g.over || st.swimming || st.passedOut > 0 || st.trapped > 0 || st.engaged > 0 || st.panic > 0) return false;
+    if (p.action || p.queue.length) { p.endAction(); p.queue = []; }
+    const y = this.look.yaw;
+    let mx = Math.sin(y) * f - Math.cos(y) * s, mz = Math.cos(y) * f + Math.sin(y) * s;
+    const len = Math.hypot(mx, mz);
+    mx = mx / len * WALK * dt; mz = mz / len * WALK * dt;
+    const w = g.world;
+    const tryMove = (nx, nz) => {
+      const ncx = Math.floor(nx), ncz = Math.floor(nz);
+      if ((ncx !== p.cx || ncz !== p.cz) && !w.canStep(p.cx, p.cz, ncx, ncz)) return false;
+      p.x = nx; p.z = nz;
+      return true;
+    };
+    const moved = tryMove(p.x + mx, p.z + mz) || tryMove(p.x + mx, p.z) || tryMove(p.x, p.z + mz);
+    p.facing = y;
+    p.moving = moved;
+    p.idle = 0;
+    if (moved) p.checkCell(g);
+    return moved;
   }
 
   // ---------- thrown things ----------
@@ -383,7 +459,7 @@ export class View {
 
   syncWalls(dt) {
     // The roof sits on full-height walls.
-    const full = this.wallsUp || this.roofOn;
+    const full = this.wallsUp || this.roofOn || this.eyesOpen();
     const goal = full ? WALL_H : CUT_H;
     this.wallH += (goal - this.wallH) * (1 - Math.exp(-dt * 10));
     for (const m of this.lot.walls) m.scale.y = this.wallH;
@@ -521,7 +597,7 @@ export class View {
         this.simModels.set(sim.id, m);
       }
       posePose(this, m, sim, dt, time, g.selected === sim);
-      m.root.visible = sim.alive ? !sim.status.away : m.root.visible;
+      m.root.visible = sim.alive ? !sim.status.away && !(sim === g.player && this.eyesOpen()) : m.root.visible;
     }
   }
 
@@ -546,8 +622,9 @@ export class View {
         this.overlay.appendChild(el);
         this.labels.set(sim.id, el);
       }
-      el.style.display = sim.status.away ? 'none' : '';
-      if (sim.status.away) continue;
+      const hide = sim.status.away || (sim === g.player && this.eyesOpen());
+      el.style.display = hide ? 'none' : '';
+      if (hide) continue;
       const y = sim.status.swimming ? 1.3 : 2.05;
       const [sx, sy] = this.project(sim.x, y, sim.z);
       el.style.transform = `translate(${sx}px, ${sy}px)`;

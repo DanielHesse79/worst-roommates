@@ -359,7 +359,7 @@ export class UI {
     this.$('roofBtn').classList.toggle('active', g.view.roofOn);
     const cm = CAM_MODES[g.view.camMode];
     this.$('camBtn').textContent = cm.icon;
-    this.$('camBtn').title = `Camera: ${cm.name} (C to switch: isometric, 3D, follow your character)`;
+    this.$('camBtn').title = `Camera: ${cm.name} (C to switch: isometric, 3D, follow, first person)`;
     this.$('muteBtn').textContent = g.audio.muted ? '🔇' : '🔊';
     this.$('muteBtn').setAttribute('aria-label', g.audio.muted ? 'Unmute sound' : 'Mute sound');
     this.$('muteBtn').setAttribute('aria-pressed', String(g.audio.muted));

@@ -34,7 +34,8 @@ export class SpeechView {
       el.dataset.tone = bubble.priority >= 2 ? 'alarm' : 'chat';
       el.style.display = blocked ? 'none' : '';
       if (blocked) continue;
-      const [sx, sy] = v.project(bubble.sim.x, bubble.sim.status.swimming ? 1.15 : 1.9, bubble.sim.z);
+      const mine = bubble.sim === v.game.player && v.eyesOpen();
+      const [sx, sy] = mine ? [width / 2, height - 60] : v.project(bubble.sim.x, bubble.sim.status.swimming ? 1.15 : 1.9, bubble.sim.z);
       if (sx < 0 || sx > width || sy < top || sy > height - 50) { el.style.display = 'none'; continue; }
       const w = el.offsetWidth, h = el.offsetHeight;
       let x = Math.max(68, Math.min(right - w, sx - w / 2));
