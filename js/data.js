@@ -123,7 +123,7 @@ export const ROSTER = [
   { id: 'vincent', name: 'Vincent', personality: 'slob', traits: ['glutton', 'lazy'], skills: { handiness: 3, chemistry: 2, cooking: 1 },
     look: 'slob', color: 0xc9b26b, pitch: 'Dental hygienist at a discount clinic who brushes his teeth with the toilet brush. Every morning. With pride. Fresh from the bowl, his breath floors grown adults one close-up "good morning" at a time, and sleeping roommates get it worst.' },
   { id: 'nermin', name: 'Nermin Teyze', first: 'Nermin', personality: 'auntie', traits: ['hotheaded', 'paranoid'], skills: { cooking: 7, charisma: 4 },
-    look: 'auntie', color: 0x7a3b5e, pitch: 'Runs the börek shop on the corner. Feeds you, judges you, and when you make her angry the slipper comes off: 20 damage, and it rarely misses. She has two, and she always gets them back.' },
+    look: 'auntie', color: 0x7a3b5e, pitch: 'Runs the börek shop on the corner. Feeds you, judges you, and when you make her angry the slipper comes off: 20 damage, and it rarely misses. She has two, and she always gets them back. The police cannot arrest her either: they get the slipper too.' },
   { id: 'pete', name: 'Pyro Pete', first: 'Pete', personality: 'schemer', traits: ['pyro', 'genius'], skills: { handiness: 4, chemistry: 2 },
     pitch: 'Works at the fireworks shop. Lights fireplaces, stokes them, cranks heaters. Knows exactly how close is too close.', locked: true },
   { id: 'bertha', name: 'Big Bertha', first: 'Bertha', personality: 'drama', traits: ['hotheaded', 'glutton'], skills: { charisma: 3, handiness: 2 },

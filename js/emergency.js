@@ -414,7 +414,7 @@ function takeStatements(g, inv) {
   for (const tip of g.tips.splice(0)) {
     const said = `${tip.by} saw ${tip.who} ${tip.what}`;
     if (tip.proof && tip.proof()) {
-      g.arrest(`🚔 ${said}. ${p.title} has the lab check, and the results back up every word. ${tip.who} is under arrest.`);
+      g.arrest(`🚔 ${said}. ${p.title} has the lab check, and the results back up every word. ${tip.who} is under arrest.`, p);
       return;
     }
     const found = evidence(g).filter(e => tip.ids.includes(e.id) && e.sus >= PROOF);
@@ -496,7 +496,7 @@ function updateInvestigation(g, gdt, min) {
         s.clear();
         if (s.sus > 0) inv.found++;
         if (p.dead) { if (s.sus > 0) g.addSuspicion(s.sus); }
-        else if (s.tip) g.arrest(`🚔 ${p.title} ${s.found} It's exactly what ${s.tip.by} described. ${s.tip.who} is under arrest.`);
+        else if (s.tip) g.arrest(`🚔 ${p.title} ${s.found} It's exactly what ${s.tip.by} described. ${s.tip.who} is under arrest.`, p);
         else if (s.sus > 0) exposed(g, `🕵️ ${p.title} ${s.found}`, s.sus);
         else g.log(`🕵️ ${p.title} ${s.found}`, 'tool');
       } else {

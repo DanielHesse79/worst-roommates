@@ -14,7 +14,7 @@ import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
 import { SHOP, LOCKED_TRAPS, contractReward } from './shop.js';
 import { updateVisitors, scheduleNextVisit, visitorsNear, dismissVisitors, visitorDied } from './visitors.js';
-import { updateOutsiders } from './outsiders.js';
+import { updateOutsiders, hurtOutsider } from './outsiders.js';
 import { updateGang } from './gang.js';
 import { initNeighbours, updateNeighbours, annoyNeighbour, pleaseNeighbour, SIDES } from './neighbours.js';
 import { updateEmergency, resetEmergency, requestInvestigation, endInvestigation, respondersNear, responderDown } from './emergency.js';
@@ -363,9 +363,10 @@ class Game {
   }
 
   // Caught and led away in handcuffs: the contract, or the free-play run, is over.
-  arrest(msg) {
+  arrest(msg, officer = null) {
     const p = this.player;
     if (!p || !p.alive || this.over) return;
+    if (p.canUse('slipper')) { this.slipperTheLaw(officer); return; }
     this.arrested = true;
     p.endAction();
     p.queue = [];
@@ -378,6 +379,20 @@ class Game {
     const session = this.session;
     setTimeout(() => { if (this.session === session) { this.setSpeed(0); this.ui.showFreeRecap(); } }, 3000);
     this.ui.refresh();
+  }
+
+  // Nobody takes an auntie in. The handcuffs come out, the slipper comes off, and the officer decides
+  // it's a matter for another day.
+  slipperTheLaw(officer) {
+    const p = this.player, who = officer ? officer.title || officer.first : 'The officer';
+    p.endAction();
+    this.sfx('punch');
+    this.popup(p, '🩴 YETER!', '#ff7ab0');
+    this.dialogue.say(p, 'slipper', 3);
+    this.log(`🩴 ${who} reaches for the handcuffs. ${p.first} reaches for her slipper. THWACK. ${who} decides this is a matter for another day.`, 'warn');
+    if (!officer || hurtOutsider(this, officer, 20, 'Slipper')) return;
+    if (officer.kind === 'detective') this.endInvestigation(`🚓 ${who} retreats to the car, rubbing his forehead, and drives off.`);
+    else this.dismissVisitors(`👮 ${who} backs down the garden path, rubbing his forehead.`);
   }
 
   checkExposed() {

@@ -71,7 +71,7 @@ export function witnessCrime(g, me, cells, what, { ids = [], victim = null, proo
     const r = reaction(g, me, x, victim);
     const saw = `${x.first} saw ${me.first} ${act}`;
     if (r.kind === 'arrest') {
-      g.arrest(`🚔 ${x.title || x.first} saw ${me.first} ${act}. Caught red-handed: ${me.first} is cuffed on the spot.`);
+      g.arrest(`🚔 ${x.title || x.first} saw ${me.first} ${act}. Caught red-handed: ${me.first} is cuffed on the spot.`, x);
       return;
     }
     if (r.kind === 'cheer') {
