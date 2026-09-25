@@ -701,11 +701,14 @@ function tactics() {
     { id: 'slipper', label: 'Throw a slipper at them', icon: '🩴', evil: true, approachSim: true, range: 4.5, duration: 2,
       available: (s, t) => s.canUse('slipper') && slippersLeft(s) > 0 && s.relWith(t) < (s.role === 'player' ? 0 : -20),
       whyNot: (s, t) => (!s.canUse('slipper') ? null : slippersLeft(s) <= 0 ? 'Both slippers are across the room' : "She isn't angry with them. Yet."),
-      finish(s, t, g) {
+      start(s, t, g, a) {
+        a.data.dodge = Math.random() < Math.min(0.5, 0.12 * Math.max(0, triedOn(s, t, 'slipper') - 1));
+        if (g.view) g.view.throwSlipper(s, t, { miss: a.data.dodge, backAt: g.clock + 92 });
+      },
+      finish(s, t, g, a) {
         (s.slippersOut = s.slippersOut || []).push(g.clock + 90);
         changeRel(s, t, -8);
-        const dodge = Math.min(0.5, 0.12 * Math.max(0, triedOn(s, t, 'slipper') - 1));
-        if (Math.random() < dodge) {
+        if (a.data.dodge) {
           g.log(`🩴 ${s.first} flings a slipper across the room. ${t.first} has learned to duck. It sails past.`, 'dim');
           return;
         }

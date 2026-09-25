@@ -390,6 +390,7 @@ class Game {
     this.popup(p, '🩴 YETER!', '#ff7ab0');
     this.dialogue.say(p, 'slipper', 3);
     this.log(`🩴 ${who} reaches for the handcuffs. ${p.first} reaches for her slipper. THWACK. ${who} decides this is a matter for another day.`, 'warn');
+    if (officer && this.view) this.view.throwSlipper(p, officer, { backAt: this.clock + 90 });
     if (!officer || hurtOutsider(this, officer, 20, 'Slipper')) return;
     if (officer.kind === 'detective') this.endInvestigation(`🚓 ${who} retreats to the car, rubbing his forehead, and drives off.`);
     else this.dismissVisitors(`👮 ${who} backs down the garden path, rubbing his forehead.`);

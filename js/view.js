@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 import { GRID_W, GRID_H } from './data.js';
 import { buildLot, objCenter, WALL_H } from './lot.js';
-import { mat, fireCluster, tombstoneMesh, reaperMesh, meteorMesh, simModel, disposeTree } from './models.js';
+import { mat, fireCluster, tombstoneMesh, reaperMesh, meteorMesh, simModel, slipperMesh, disposeTree } from './models.js';
 import { Effects } from './effects.js';
 import { canPlaceFloorTrap, FLOOR_TRAPS } from './traps.js';
 import { Street } from './street.js';
 import { SpeechView } from './speech-view.js';
 
 const CUT_H = 0.55;
+const CAM_KEY = 'worst-roommates-camera';
+// Isometric (the classic view), a free 3D perspective, or a perspective that follows your character.
+export const CAM_MODES = { iso: { icon: '📐', name: 'Isometric' }, persp: { icon: '🎥', name: '3D' }, follow: { icon: '🎬', name: 'Follow' } };
+const PERSP_DIST = 32;             // camera distance at zoom 1 in the perspective modes
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const CHARRED = mat(0x1d1714);
 const lerpAngle = (a, b, t) => a + (((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * t;
 
@@ -23,9 +28,14 @@ export class View {
     this.renderer.toneMappingExposure = 1.28;
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog(0x9fc5e8, 50, 100);
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+    this.ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+    this.persp = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
     // Target sits right of the lot centre so the house isn't hidden behind the right-hand sidebar.
-    this.cam = { target: new THREE.Vector3(GRID_W / 2 + 2, 0, GRID_H / 2 - 1), angle: Math.PI / 4, goal: Math.PI / 4, zoom: 1.0 };
+    this.cam = { target: new THREE.Vector3(GRID_W / 2 + 2, 0, GRID_H / 2 - 1), angle: Math.PI / 4, goal: Math.PI / 4, zoom: 1.0, pitch: 0.8 };
+    let mode = null;
+    try { mode = localStorage.getItem(CAM_KEY); } catch { /* default view */ }
+    this.setCameraMode(CAM_MODES[mode] ? mode : 'iso');
+    this.projectiles = [];
     this.keys = new Set();
     this.wallsUp = false;
     this.roofOn = false;
@@ -82,6 +92,7 @@ export class View {
     this.popups = [];
     this.speech.clear();
     this.comicCooldown = 0;
+    this.projectiles = [];
   }
 
   resize() {
@@ -96,13 +107,14 @@ export class View {
     const c = this.canvas;
     let down = null;
     c.addEventListener('contextmenu', e => e.preventDefault());
-    c.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, button: e.button, moved: false }; });
+    c.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, button: e.button, orbit: e.button === 2 || e.shiftKey, moved: false }; });
     window.addEventListener('pointermove', e => {
       this.hover = { x: e.clientX, y: e.clientY, onCanvas: e.target === c };
       if (!down) return;
       const dx = e.clientX - down.lx, dy = e.clientY - down.ly;
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) down.moved = true;
-      if (down.moved) this.panPixels(dx, dy);
+      if (down.moved && down.orbit) this.orbit(dx, dy);
+      else if (down.moved) this.panPixels(dx, dy);
       down.lx = e.clientX; down.ly = e.clientY;
     });
     window.addEventListener('pointerup', e => {
@@ -123,15 +135,43 @@ export class View {
     window.addEventListener('keyup', e => this.keys.delete(e.key.toLowerCase()));
   }
 
-  worldPerPixel() { return (this.viewSize() * 2) / this.canvas.clientHeight; }
+  // How much ground one screen pixel covers at the point the camera looks at.
+  worldPerPixel() {
+    if (this.camMode === 'iso') return (this.viewSize() * 2) / this.canvas.clientHeight;
+    return (2 * (PERSP_DIST / this.cam.zoom) * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2))) / this.canvas.clientHeight;
+  }
   viewSize() { return 9 / this.cam.zoom; }
+  // Screen-up covers more ground than screen-across, depending on how steeply the camera looks down.
+  depthScale() { return this.camMode === 'iso' ? 1.4 : 1 / Math.sin(this.cam.pitch); }
 
   panPixels(dx, dy) {
+    // Grabbing the view means you want to look somewhere else: stop following.
+    if (this.camMode === 'follow') { this.setCameraMode('persp'); this.game.ui.refresh(); }
     const s = this.worldPerPixel(), a = this.cam.angle;
     const right = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
     const fwd = new THREE.Vector3(-Math.sin(a), 0, -Math.cos(a));
-    this.cam.target.addScaledVector(right, -dx * s).addScaledVector(fwd, dy * s * 1.4);
+    this.cam.target.addScaledVector(right, -dx * s).addScaledVector(fwd, dy * s * this.depthScale());
     this.clampTarget();
+  }
+
+  // Turn the view freely; in the perspective modes, tilt it too.
+  orbit(dx, dy) {
+    this.cam.angle -= dx * 0.008;
+    this.cam.goal = this.cam.angle;
+    if (this.camMode !== 'iso') this.cam.pitch = clamp(this.cam.pitch + dy * 0.006, 0.22, 1.4);
+  }
+
+  setCameraMode(mode) {
+    this.camMode = mode;
+    this.camera = mode === 'iso' ? this.ortho : this.persp;
+    if (mode === 'follow') { this.cam.zoom = Math.max(this.cam.zoom, 1.7); this.cam.pitch = 0.55; }
+    else if (mode === 'persp') this.cam.pitch = clamp(this.cam.pitch, 0.6, 1.1);
+    try { localStorage.setItem(CAM_KEY, mode); } catch { /* this session only */ }
+  }
+
+  cycleCamera() {
+    const modes = Object.keys(CAM_MODES);
+    this.setCameraMode(modes[(modes.indexOf(this.camMode) + 1) % modes.length]);
   }
 
   clampTarget() {
@@ -147,19 +187,74 @@ export class View {
     if (k.has('s') || k.has('arrowdown')) pz += 1;
     if (k.has('a') || k.has('arrowleft')) px -= 1;
     if (k.has('d') || k.has('arrowright')) px += 1;
-    if (px || pz) this.panPixels(-px * sp / this.worldPerPixel(), -pz * sp / this.worldPerPixel() / 1.4);
+    if (px || pz) this.panPixels(-px * sp / this.worldPerPixel(), -pz * sp / this.worldPerPixel() / this.depthScale());
     this.cam.angle += (this.cam.goal - this.cam.angle) * (1 - Math.exp(-dt * 8));
     const a = this.cam.angle, t = this.cam.target;
-    this.camera.position.set(t.x + Math.sin(a) * 30, t.y + 26, t.z + Math.cos(a) * 30);
+    if (this.camMode === 'follow') {
+      const p = this.game.player;
+      if (p && p.alive && !p.status.away) {
+        const k = 1 - Math.exp(-dt * 4);
+        t.x += (p.x - t.x) * k;
+        t.z += (p.z - t.z) * k;
+      }
+    }
+    if (this.camMode === 'iso') {
+      this.camera.position.set(t.x + Math.sin(a) * 30, t.y + 26, t.z + Math.cos(a) * 30);
+    } else {
+      const d = PERSP_DIST / this.cam.zoom, p = this.cam.pitch;
+      this.camera.position.set(t.x + Math.sin(a) * Math.cos(p) * d, t.y + Math.sin(p) * d, t.z + Math.cos(a) * Math.cos(p) * d);
+    }
     this.camera.lookAt(t);
     if (this.shake > 0) {
       this.shake -= dt;
       this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.8;
       this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.8;
     }
-    const h = this.viewSize();
-    Object.assign(this.camera, { left: -h * this.aspect, right: h * this.aspect, top: h, bottom: -h });
+    if (this.camMode === 'iso') {
+      const h = this.viewSize();
+      Object.assign(this.camera, { left: -h * this.aspect, right: h * this.aspect, top: h, bottom: -h });
+    } else {
+      this.camera.aspect = this.aspect;
+    }
     this.camera.updateProjectionMatrix();
+  }
+
+  // ---------- thrown things ----------
+
+  // A slipper in flight: a spinning arc from the thrower's hand to the target's head (or past them, if
+  // they duck), then left lying on the floor until it's fetched back at `backAt` (game minutes).
+  throwSlipper(from, to, { miss = false, backAt = null } = {}) {
+    const start = new THREE.Vector3(from.x, 1.05, from.z);
+    const end = new THREE.Vector3(to.x, 1.2, to.z);
+    if (miss) end.addScaledVector(end.clone().sub(start).setY(0).normalize(), 1.6).setY(0.3);
+    const mesh = slipperMesh();
+    mesh.position.copy(start);
+    this.scene.add(mesh);
+    const dist = start.distanceTo(end);
+    this.projectiles.push({ mesh, start, end, t: 0, dur: 0.22 + dist * 0.05, arc: 0.35 + dist * 0.12, backAt, landed: false });
+  }
+
+  syncProjectiles(dt) {
+    this.projectiles = this.projectiles.filter(p => {
+      if (!p.landed) {
+        p.t = Math.min(1, p.t + dt / p.dur);
+        p.mesh.position.lerpVectors(p.start, p.end, p.t);
+        p.mesh.position.y += Math.sin(Math.PI * p.t) * p.arc;
+        p.mesh.rotation.x += dt * 16;
+        p.mesh.rotation.y += dt * 5;
+        if (p.t < 1) return true;
+        // Thwack, and down it drops.
+        p.landed = true;
+        this.burst(p.end.x, p.end.z, 'dust');
+        p.mesh.position.set(p.end.x + (Math.random() - 0.5) * 0.5, 0.03, p.end.z + (Math.random() - 0.5) * 0.5);
+        p.mesh.rotation.set(0, Math.random() * Math.PI * 2, 0);
+        return true;
+      }
+      if (p.backAt !== null && this.game.clock < p.backAt) return true;
+      this.scene.remove(p.mesh);
+      disposeTree(p.mesh);
+      return false;
+    });
   }
 
   // ---------- picking ----------
@@ -207,6 +302,7 @@ export class View {
     this.syncReapers(dt);
     this.syncMeteors();
     this.fx.update(dt, time);
+    this.syncProjectiles(dt);
     this.street.update(dt, time);
     this.syncNeighbours();
     this.syncHover(time);
@@ -433,6 +529,7 @@ export class View {
 
   project(x, y, z) {
     const v = new THREE.Vector3(x, y, z).project(this.camera);
+    if (v.z > 1) return [-9999, -9999];
     const r = this.canvas.getBoundingClientRect();
     return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height];
   }

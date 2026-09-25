@@ -5,6 +5,7 @@ import { JOBS, SKILLS, jobTitle, shiftPay, shiftTime } from './career.js';
 import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone, POETIC, canBeNemesis, bestFor, DIFFICULTIES, starKey } from './contracts.js';
 import { SHOP } from './shop.js';
 import { planLine, carefulLine } from './plans.js';
+import { CAM_MODES } from './view.js';
 import { NewsTicker } from './news.js';
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
@@ -32,6 +33,7 @@ export class UI {
     this.$('skipBanner').addEventListener('click', () => { g.skipHoldUntil = performance.now() + 60 * 60 * 1000; this.watching = true; this.refresh(); });
     this.$('wallsBtn').addEventListener('click', () => { g.view.wallsUp = !g.view.wallsUp; this.refresh(); });
     this.$('roofBtn').addEventListener('click', () => { g.view.roofOn = !g.view.roofOn; this.refresh(); });
+    this.$('camBtn').addEventListener('click', () => { g.view.cycleCamera(); this.refresh(); });
     this.$('rotL').addEventListener('click', () => { g.view.cam.goal += Math.PI / 2; });
     this.$('rotR').addEventListener('click', () => { g.view.cam.goal -= Math.PI / 2; });
     this.$('boardBtn').addEventListener('click', () => { g.setSpeed(0); this.showBoard(); });
@@ -95,6 +97,7 @@ export class UI {
       if (e.key === ' ') { e.preventDefault(); g.setSpeed(g.speed === 0 ? (g.lastSpeed || 1) : 0); }
       if (['1', '2', '3'].includes(e.key)) g.setSpeed(Number(e.key));
       if (e.key === 'r' || e.key === 'R') { g.view.roofOn = !g.view.roofOn; this.refresh(); }
+      if (e.key === 'c' || e.key === 'C') { g.view.cycleCamera(); this.refresh(); }
       if (e.key === 'Tab') {
         e.preventDefault();
         if (g.player && !g.player.status.away) this.select(g.player, true);
@@ -354,6 +357,9 @@ export class UI {
     this.$('freeWillBtn').classList.toggle('active', g.freeWill);
     this.$('wallsBtn').textContent = g.view.wallsUp ? 'Walls: Up' : 'Walls: Cut';
     this.$('roofBtn').classList.toggle('active', g.view.roofOn);
+    const cm = CAM_MODES[g.view.camMode];
+    this.$('camBtn').textContent = cm.icon;
+    this.$('camBtn').title = `Camera: ${cm.name} (C to switch: isometric, 3D, follow your character)`;
     this.$('muteBtn').textContent = g.audio.muted ? '🔇' : '🔊';
     this.$('muteBtn').setAttribute('aria-label', g.audio.muted ? 'Unmute sound' : 'Mute sound');
     this.$('muteBtn').setAttribute('aria-pressed', String(g.audio.muted));

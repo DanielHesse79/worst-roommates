@@ -417,6 +417,16 @@ function handbag(colour) {
   return g;
 }
 
+// A pink house slipper, for throwing.
+export function slipperMesh() {
+  const g = new THREE.Group();
+  const sole = box(0.12, 0.035, 0.26, 0xe87aa0, 0, 0, 0);
+  sole.castShadow = true;
+  g.add(sole);
+  g.add(box(0.13, 0.05, 0.06, 0xf6efe4, 0, 0.035, 0.045));
+  return g;
+}
+
 function toiletBrush() {
   const g = new THREE.Group();
   g.add(cyl(0.012, 0.012, 0.34, 0xe8e8e8, 0, 0.02, 0.05));
