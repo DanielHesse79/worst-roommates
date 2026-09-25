@@ -8,6 +8,8 @@
   --accent: #dfec92;
   --evil: #ee9ab7;
   --good: #a8d6ba;
+  --news-height: 36px;
+  --hud-top: 121px;
   color-scheme: dark;
 }
 body { font-family: 'Segoe UI', sans-serif; }
@@ -18,7 +20,7 @@ button:disabled { cursor: not-allowed; }
 * { scrollbar-width: thin; scrollbar-color: #666572 transparent; }
 #overlay { background: radial-gradient(ellipse at 44% 42%, transparent 48%, rgba(24, 23, 40, 0.25) 100%); }
 #topbar, #sidebar, #simPanel, #trapBar { box-shadow: 0 8px 28px #12121b35, inset 0 1px #ffffff08; backdrop-filter: blur(16px); }
-#topbar { top: 12px; left: 14px; right: 14px; transform: none; padding: 10px 12px; gap: 12px; border-radius: 14px; z-index: 6; }
+#topbar { top: calc(var(--news-height) + 12px); left: 14px; right: 14px; transform: none; padding: 10px 12px; gap: 12px; border-radius: 14px; z-index: 6; }
 #topbar .brand { color: #f4eedf; font-size: 12px; letter-spacing: 0.5px; margin-right: auto; display: flex; align-items: center; gap: 5px; }
 .brand em { color: var(--accent); font-style: normal; }
 .brandIcon { color: var(--accent); font-size: 25px; margin-right: 4px; }
@@ -37,12 +39,12 @@ button:disabled { cursor: not-allowed; }
 .settingsPanel .checkRow { justify-content: flex-start; gap: 8px; margin-bottom: 12px; align-items: center; }
 .checkRow input { accent-color: #9fcba9; width: 16px; height: 16px; }
 .settingsPanel small { color: var(--dim); font: italic 12px Georgia, serif; }
-#portraits { top: 90px; left: 18px; gap: 12px; }
+#portraits { top: calc(var(--hud-top) + 5px); left: 18px; gap: 12px; }
 .portrait { width: 43px; height: 43px; border-width: 2px; background-image: linear-gradient(145deg, #ffffff30, #00000030); }
 .portrait.sel { outline-color: #e1ecac; }
-#queue { top: 87px; left: 80px; right: 294px; overflow: auto; }
+#queue { top: calc(var(--hud-top) + 2px); left: 80px; right: 294px; overflow: auto; }
 .qItem { flex-shrink: 0; }
-#sidebar { top: 85px; right: 14px; bottom: 97px; width: 254px; padding: 16px; border-radius: 15px; z-index: 3; }
+#sidebar { top: var(--hud-top); right: 14px; bottom: 97px; width: 254px; padding: 16px; border-radius: 15px; z-index: 3; }
 body.journal-closed #sidebar { display: none; }
 .sideTitle { color: #dfe3d0; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; margin: 10px 0; }
 .journalTitle { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 17px; }
@@ -78,7 +80,7 @@ body.journal-closed #sidebar { display: none; }
 #trapBar button.armed { background: #dce4a0; border-color: #f4f5cd; color: #222633; box-shadow: 0 0 15px #dce4a033; }
 #trapBar button:hover { background: #494254; }
 #trapHint { bottom: 95px; top: auto; left: 50%; max-width: calc(100vw - 36px); white-space: normal; z-index: 7; background: #292637; }
-#toast { top: 90px; left: 48%; max-width: min(480px, 70vw); background: #ecd8bd; color: #332d36; border: 1px solid #fff2d9; border-radius: 5px; font: bold 16px Georgia, serif; box-shadow: 0 7px 24px #0003; z-index: 7; text-align: center; }
+#toast { top: calc(var(--hud-top) + 5px); left: 48%; max-width: min(480px, 70vw); background: #ecd8bd; color: #332d36; border: 1px solid #fff2d9; border-radius: 5px; font: bold 16px Georgia, serif; box-shadow: 0 7px 24px #0003; z-index: 7; text-align: center; }
 .simLabel .nm { font-size: 10px; padding: 2px 6px; background: #242632b0; border-radius: 4px; text-shadow: none; }
 .simLabel.selected .nm { background: #dde8a9; color: #283332; }
 .simLabel .thought { font-size: 13px; background: #faf3df; }
@@ -88,9 +90,9 @@ body.journal-closed #sidebar { display: none; }
 .speechBubble::after { content: ''; position: absolute; left: var(--tail, 50%); bottom: -9px; width: 13px; height: 13px; background: inherit; border-right: 2px solid #383341; border-bottom: 2px solid #383341; transform: skew(-12deg) rotate(45deg); }
 .speechBubble[data-tone=alarm] { background: #f3d5ce; }
 .comicCaption { font: 900 23px 'Segoe UI', sans-serif; font-style: italic; color: #fff0a5; text-shadow: 2px 2px #30233a, -1px -1px #30233a, 0 4px #30233a; letter-spacing: -0.8px; white-space: nowrap; margin-left: -70px; }
-.modal { background: #171922b5; backdrop-filter: blur(7px); }
-.modalBox { background: #212431; border: 1px solid #6a6474; border-radius: 20px; padding: 28px; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; }
-.modalBox.wide { width: calc(100vw - 48px); max-width: 1040px; max-height: calc(100vh - 40px); }
+.modal { inset: var(--news-height) 0 0; background: #171922b5; backdrop-filter: blur(7px); }
+.modalBox { background: #212431; border: 1px solid #6a6474; border-radius: 20px; padding: 28px; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - var(--news-height) - 32px); overflow-y: auto; }
+.modalBox.wide { width: calc(100vw - 48px); max-width: 1040px; max-height: calc(100vh - var(--news-height) - 40px); }
 .modalBox h1 { font-family: Georgia, serif; }
 .boardHero { position: relative; padding: 8px 8px 20px; margin-bottom: 24px; border-bottom: 1px solid #ffffff24; overflow: hidden; }
 .eyebrow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 3px; color: #e5a8b6; margin-bottom: 18px; }
@@ -135,29 +137,58 @@ details#howTo summary { color: #e3e9bd; }
   #topbar .brand { display: none; }
 }
 @media (max-width: 900px) {
-  #sidebar { display: none; top: 100px; bottom: 98px; width: 254px; }
+  #sidebar { display: none; bottom: 98px; width: 254px; }
   body.journal-open #sidebar { display: flex; }
-  #queue { right: 14px; top: 109px; }
-  #portraits { top: 112px; }
+  #queue { right: 14px; }
   #simPanel { width: 290px; max-height: 225px; overflow-y: auto; }
   #trapBar .barLabel { display: none; }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .heroStamp { right: 16px; font-size: 25px; }
 }
 @media (max-width: 600px) {
-  #topbar { left: 8px; right: 8px; top: 8px; padding: 6px; gap: 4px 8px; }
+  #topbar { left: 8px; right: 8px; top: calc(var(--news-height) + 8px); padding: 6px; gap: 4px 8px; }
   #topbar button { font-size: 10px; padding: 5px 7px; }
   #simPanel { left: 8px; bottom: 92px; width: 250px; max-height: 180px; padding: 10px; }
   #trapBar { left: 8px; right: 8px; bottom: 8px; padding: 8px; }
   #sidebar { right: 8px; bottom: 92px; }
-  .settingsPanel { position: fixed; right: 8px; top: 90px; }
+  #soundSettings { position: static; }
+  .settingsPanel { position: absolute; right: 0; top: calc(100% + 8px); }
   .modalBox.wide { width: calc(100vw - 20px); padding: 20px; }
   .cards { grid-template-columns: 1fr; }
   .sectionLabel span, .heroFoot span:last-child { display: none; }
   .heroStamp { display: none; }
   .speechBubble { max-width: 180px; padding: 8px 10px; }
   .speechBubble span { font-size: 12px; }
-  #toast { top: 110px; }
+}
+
+/* The Daily Grave: a continuous, fictional news wire above both the game and its menus. */
+#newsTicker { position: fixed; inset: 0 0 auto; z-index: 40; display: flex; align-items: center; min-height: 36px;
+  background: #191d27; color: #f4eedf; border-bottom: 1px solid #b9c77c; box-shadow: 0 2px 12px #0005; }
+#newsTicker[hidden] { display: none; }
+.newsBrand { align-self: stretch; display: flex; flex-direction: column; justify-content: center; flex: 0 0 150px;
+  padding: 5px 14px; background: #dfeaa0; color: #252a2e; line-height: 1.25; }
+.newsBrand strong { font: 800 11px Georgia, serif; white-space: nowrap; }
+.newsBrand span { font-size: 8px; font-weight: 800; letter-spacing: 1.3px; margin-top: 2px; }
+#newsViewport { flex: 1; min-width: 0; overflow: hidden; padding: 7px 0; }
+#newsTrack { display: flex; width: max-content; will-change: transform; }
+.newsItem { flex: 0 0 auto; white-space: nowrap; padding: 0 46px 0 16px; font-size: 12px; line-height: 22px; }
+.newsCategory { margin-right: 10px; color: #e7a7bb; font-size: 9px; letter-spacing: 1.2px; }
+.newsControls { display: flex; align-self: stretch; align-items: center; gap: 3px; padding: 0 8px;
+  border-left: 1px solid var(--line); box-shadow: -10px 0 16px #191d27; z-index: 1; }
+.newsControls button { width: 30px; min-height: 30px; padding: 0; border: 1px solid #ffffff25; border-radius: 4px;
+  background: #303543; color: #e1eaaa; cursor: pointer; font: 700 16px 'Segoe UI', sans-serif; }
+.newsControls button:hover { background: #495044; border-color: #dfeaa0; }
+.newsControls button:disabled { opacity: 0.4; }
+#newsTicker.news-still #newsTrack { width: 100%; transform: none !important; will-change: auto; }
+.news-still .newsItem { width: 100%; white-space: normal; padding: 0 12px; line-height: 1.5; }
+.news-still .newsItem:not(:first-child) { display: none; }
+#skipBanner { top: var(--hud-top); }
+@media (max-width: 600px) {
+  .newsBrand { flex-basis: 98px; padding: 5px 8px; }
+  .newsBrand strong { font-size: 8px; }
+  .newsBrand span { font-size: 7px; letter-spacing: 0.5px; }
+  .newsControls { padding: 0 4px; }
+  .newsItem { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

@@ -4,6 +4,7 @@ import { TRAPS, toolPrice, toolLock } from './traps.js';
 import { JOBS, SKILLS, jobTitle, shiftPay, shiftTime } from './career.js';
 import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone, POETIC, canBeNemesis, bestFor, DIFFICULTIES, starKey } from './contracts.js';
 import { SHOP } from './shop.js';
+import { NewsTicker } from './news.js';
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
 const hex = c => '#' + c.toString(16).padStart(6, '0');
@@ -17,6 +18,7 @@ export class UI {
     this.$ = id => document.getElementById(id);
     this.pie = this.$('pie');
     this.acc = 0;
+    this.news = new NewsTicker();
     this.bind();
   }
 
@@ -327,6 +329,7 @@ export class UI {
   // ---------- panels ----------
 
   update(dt) {
+    this.news.update(dt);
     this.acc += dt;
     if (this.acc < 0.2) return;
     this.acc = 0;

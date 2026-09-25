@@ -12,6 +12,15 @@
   <canvas id="view"></canvas>
   <div id="overlay"></div>
 
+  <section id="newsTicker" aria-label="The Daily Grave: fictional satirical news">
+    <div class="newsBrand"><strong>THE DAILY GRAVE</strong><span>FICTIONAL SATIRE</span></div>
+    <div id="newsViewport"><div id="newsTrack" aria-live="off"></div></div>
+    <div class="newsControls">
+      <button id="newsPause" type="button" aria-label="Pause and read the news" aria-pressed="false" title="Pause and read the news">Ⅱ</button>
+      <button id="newsNext" type="button" aria-label="Next satirical headline" title="Next satirical headline">→</button>
+    </div>
+  </section>
+
   <header id="topbar">
     <div class="brand"><span class="brandIcon">☠</span> WORST <em>ROOMMATES</em></div>
     <span id="clock"></span>
@@ -41,6 +50,7 @@
           <label class="checkRow"><input id="ambience" type="checkbox" checked> Neighbourhood ambience</label>
           <label class="checkRow"><input id="music" type="checkbox" checked> Music on the menus and when paused</label>
           <label class="checkRow"><input id="dialogue" type="checkbox" checked> Roommate speech bubbles</label>
+          <label class="checkRow"><input id="newsEnabled" type="checkbox" checked> The Daily Grave news ticker</label>
           <small>Birds outside. Bad decisions inside.</small>
         </div>
       </details>
