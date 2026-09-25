@@ -2,6 +2,7 @@
 // against you); your own character only looks after their needs, and knows better than to use what you rigged.
 import { OBJECT_ACTIONS, SIM_ACTIONS, TOMB_ACTIONS, SWIM, FIGHT, WALK, CLEAN, FIX, BREAKUP, PUTBACK } from './interactions.js';
 import { PERSONALITIES } from './data.js';
+import { pickPlan, pickCareful, avoids } from './plans.js';
 
 const objAct = (type, id) => OBJECT_ACTIONS[type].find(d => d.id === id);
 const simAct = id => SIM_ACTIONS.find(d => d.id === id);
@@ -17,7 +18,7 @@ function reachable(s, def, target, g) {
 function viable(s, g, def, target) {
   if (!def || !target) return false;
   if (def.available && !def.available(s, target, g)) return false;
-  if (rigged(s, target)) return false;
+  if (rigged(s, target) || avoids(s, g, target)) return false;
   return reachable(s, def, target, g);
 }
 
@@ -225,7 +226,7 @@ export function runAutonomy(s, g, min) {
   const starving = s.needs.hunger < 20;
   // Your own free will covers needs and chores; the scheming is up to you.
   const scheming = s !== g.player && !starving;
-  const choice = pickRole(s, g) || (scheming && pickCurious(s, g)) || (scheming && pickEvil(s, g)) || pickNeed(s, g) || pickClean(s, g) || pickWander(s, g);
+  const choice = pickRole(s, g) || (scheming && pickPlan(s, g, viable)) || pickCareful(s, g, viable) || (scheming && pickCurious(s, g)) || (scheming && pickEvil(s, g)) || pickNeed(s, g) || pickClean(s, g) || pickWander(s, g);
   if (!choice) return;
   s.enqueue(choice.def, choice.target, 'auto');
   warnPlayer(s, g, choice);
@@ -239,4 +240,5 @@ function warnPlayer(s, g, { def, target }) {
   else if (def.id === 'drink' && target === me) g.danger(`🍹 ${s.first} is coming over with a "special" drink for ${me.first}. Walk away, or don't be thirsty.`);
   else if (def.id === 'breathe' && target === me && s.status.breath > 0) g.danger(`🤢 ${s.first} is coming to say good morning. You can smell it from here. Keep moving!`);
   else if (def.id === 'fight' && target === me) g.danger(`🥊 ${s.first} is coming over to settle things with their fists.`);
+  else if (def.id === 'slipper' && target === me) g.danger(`🩴 ${s.first} is taking off a slipper and turning towards ${me.first}. Duck!`);
 }

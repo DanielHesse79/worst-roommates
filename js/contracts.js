@@ -9,7 +9,7 @@ export const CAUSE_VERB = {
   Poison: 'die of poison', Fight: 'die in a fight', Meteor: 'be hit by a meteor',
   Slip: 'slip to their death', Crushed: 'be crushed', Explosion: 'be blown up', Piranhas: 'be eaten by piranhas',
   Fright: 'be scared to death', 'Bear Trap': 'die in a bear trap', Fart: 'die from a silent-but-deadly one',
-  'Letter Bomb': 'open a letter bomb', Boredom: 'be bored to death', Laughter: 'die laughing', 'Car Crash': 'be hit by a car', 'Biker Gang': 'be beaten up by bikers', 'Bad Breath': 'die of bad breath',
+  'Letter Bomb': 'open a letter bomb', Boredom: 'be bored to death', Laughter: 'die laughing', 'Car Crash': 'be hit by a car', 'Biker Gang': 'be beaten up by bikers', 'Bad Breath': 'die of bad breath', Slipper: 'be taken out by a flying slipper',
 };
 
 const CAUSE_PAST = {
@@ -17,7 +17,7 @@ const CAUSE_PAST = {
   Poison: 'was poisoned', Fight: 'was killed in a fight', Meteor: 'was flattened by a meteor',
   Slip: 'slipped and died', Crushed: 'was crushed', Explosion: 'was blown up', Piranhas: 'was eaten by piranhas',
   Fright: 'was scared to death', 'Bear Trap': 'died in a bear trap', Fart: 'was gassed',
-  'Letter Bomb': 'was killed by a letter bomb', Boredom: 'was bored to death', Laughter: 'died laughing', 'Car Crash': 'was hit by a car', 'Biker Gang': 'was beaten up by a biker gang', 'Bad Breath': 'died of bad breath',
+  'Letter Bomb': 'was killed by a letter bomb', Boredom: 'was bored to death', Laughter: 'died laughing', 'Car Crash': 'was hit by a car', 'Biker Gang': 'was beaten up by a biker gang', 'Bad Breath': 'died of bad breath', Slipper: 'was taken out by a flying slipper',
 };
 
 export const CONTRACTS = [
@@ -147,7 +147,7 @@ export const POETIC = {
   gloria: ['Electrocution', 'a ring light too close to the bath'], silas: ['Car Crash', 'hit by a car with no brakes, just like the ones he sells'],
   dolly: ['Fright', 'one last dramatic scream'], adam: ['Crushed', 'buried under a shelf of books he would have summarised for you'],
   pete: ['Explosion', 'out with a bang'], bertha: ['Slip', 'the bigger they are'], gus: ['Fire', 'his chili meets an open flame'],
-  seance: ['Meteor', 'she never saw it coming'], vincent: ['Drowning', 'he gargles with pool water, so let him gargle the lot'],
+  seance: ['Meteor', 'she never saw it coming'], nermin: ['Slip', 'tripped over her own slipper'], vincent: ['Drowning', 'he gargles with pool water, so let him gargle the lot'],
 };
 
 export function versusContract(meId, foeId) {

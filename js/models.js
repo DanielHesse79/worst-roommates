@@ -428,22 +428,22 @@ export function simModel(sim) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const glam = sim.look === 'glam';
+  const glam = sim.look === 'glam', auntie = sim.look === 'auntie';
   const shirt = mat(sim.color, { unique: true });
   const skin = mat(sim.skin, { unique: true });
-  const pants = glam ? skin : mat(PANTS_COLORS[sim.id % PANTS_COLORS.length]);
-  const shoe = glam ? mat(0x111114, { roughness: 0.3, metalness: 0.15 }) : mat(0x1a1410);
+  const pants = glam || auntie ? skin : mat(PANTS_COLORS[sim.id % PANTS_COLORS.length]);
+  const shoe = glam ? mat(0x111114, { roughness: 0.3, metalness: 0.15 }) : auntie ? mat(0xe87aa0) : mat(0x1a1410);
 
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.3, 4, 12), shirt);
   torso.position.y = 0.8;
   torso.castShadow = true;
   body.add(torso);
-  if (glam) {
-    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.3, 0.3, 18), shirt);
+  if (glam || auntie) {
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.19, auntie ? 0.34 : 0.3, auntie ? 0.42 : 0.3, 18), shirt);
     skirt.position.y = 0.57;
     skirt.castShadow = true;
     body.add(skirt);
-    body.add(cyl(0.185, 0.185, 0.035, 0xd4a857, 0, 0.7, 0, 18));
+    if (glam) body.add(cyl(0.185, 0.185, 0.035, 0xd4a857, 0, 0.7, 0, 18));
   } else {
     body.add(box(0.34, 0.12, 0.24, pants, 0, 0.56, 0));
   }
@@ -455,6 +455,14 @@ export function simModel(sim) {
   head.add(sphere(0.17, skin));
   head.add(sphere(0.03, skin, 0, -0.01, 0.17));
   if (glam) longHair(head, 0x1a0f0a);
+  else if (auntie) {
+    // Grey hair in a no-nonsense bun.
+    const hm = mat(0x9a9a9a, { roughness: 0.9 });
+    const cap = sphere(0.18, hm, 0, 0.05, -0.02);
+    cap.scale.set(1, 0.7, 1);
+    head.add(cap);
+    head.add(sphere(0.075, hm, 0, 0.13, -0.14));
+  }
   else hairFor(head, (sim.id * 7 + 3) % 5, HAIR_COLORS[(sim.id * 5) % HAIR_COLORS.length]);
   const eyes = [], brows = [];
   for (const x of [-0.06, 0.06]) {
@@ -482,7 +490,7 @@ export function simModel(sim) {
     body.add(pivot);
     return pivot;
   };
-  const foot = () => (glam ? boot(shoe) : box(0.1, 0.07, 0.18, shoe, 0, 0, 0.04));
+  const foot = () => (glam ? boot(shoe) : auntie ? box(0.11, 0.04, 0.2, shoe, 0, -0.01, 0.04) : box(0.1, 0.07, 0.18, shoe, 0, 0, 0.04));
   const legL = limb(0.07, 0.3, pants, -0.08, 0.52, foot());
   const legR = limb(0.07, 0.3, pants, 0.08, 0.52, foot());
   const armL = limb(0.055, 0.28, shirt, -0.23, 1.0, sphere(0.055, skin));

@@ -219,6 +219,7 @@ ul.objs li small { color: var(--dim); }
 ul.objs li.house { color: #b8c7ff; }
 .intel.house small { display: block; color: var(--dim); margin-top: 3px; }
 .personCard .pcRow.role { color: #b8c7ff; font-weight: 600; }
+.personCard .pcRow.plan { color: #ffb38a; font-weight: 600; }
 .choiceBtn { text-align: left; padding: 10px 12px; }
 .choiceBtn small { display: block; font-size: 11px; opacity: 0.75; font-weight: 400; margin-top: 2px; }
 .recruit .jobLine small { color: var(--dim); }

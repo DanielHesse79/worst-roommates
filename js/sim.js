@@ -330,6 +330,8 @@ export class Sim {
     else if (st.poisoned > 0) this.thought = '🤢';
     else if (st.gassy > 0) this.thought = '💨';
     else if (st.breath > 0) this.thought = '🪥';
+    else if (this.plan && !this.action) this.thought = this.plan.kind === 'revenge' ? '💢' : '🎯';
+    else if (this.careful && !this.action) this.thought = '👀';
     else if (this.needs.hygiene < 15) this.thought = '🦨';
     else if (this.confused && !this.action) this.thought = '🌀';
     else if (this.needs.hunger < 15) this.thought = '🍗❗';
@@ -346,7 +348,7 @@ export class Sim {
       if (a.target && a.target.alive === false) return this.fail(game, 'is dead');
       // Close enough to talk, but not standing on top of them (then step to a neighbouring cell first).
       const gap = def.approachSim ? Math.hypot(a.target.x - this.x, a.target.z - this.z) : 0;
-      const closeEnough = def.approachSim && gap < 1.6 && gap > 0.6;
+      const closeEnough = def.approachSim && gap < (def.range || 1.6) && gap > 0.6;
       if (!closeEnough) {
         const spot = def.approachSim ? this.adjacentTo(a.target, game.world, game)
           : def.spot ? def.spot(this, a.target, game) : [this.cx, this.cz];
@@ -378,6 +380,7 @@ export class Sim {
       if (!this.alive || this.action !== a) return;
       if (a.t >= a.duration) {
         if (def.finish) def.finish(this, a.target, game, a);
+        if (def.approachSim && def.evil) game.provoked(a.target, this, def);
         if (this.action === a) this.endAction();
       }
     }

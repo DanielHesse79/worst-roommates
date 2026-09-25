@@ -151,6 +151,8 @@ export const LINES = {
   warmhands: ['Brr. Oh, that is better. Almost too better.', 'Fire: nature\'s radiator.'],
   stopmusic: ['Silence. Glorious, murderous silence.', 'Some of us have a lease to sleep through.'],
   toiletbrush: ['Brushing time!', 'Bristles are bristles.', 'Two minutes. Every tooth. Every corner of the bowl.'],
+  slipper: ['YETER!', 'Catch!', 'You want to say that again?', 'This one has your name on it.'],
+  apologise: ['I am so, so sorry. Truly. Mostly.', 'Can we start again? From before the thing?', 'I brought you a peace offering. It is an apology.'],
   breathe: ['Good morning! *HAAAAH*', 'Smell my breath. No reason.', 'Come closer. Closer. CLOSER.', 'Say ahh. No, I will. HAAAAH.'],
   note: ['Per my last extremely passive-aggressive note.', 'The dishes are not soaking. They are evolving.', 'Kindly. KINDLY. Underlined.'],
   narcissist: [
@@ -287,6 +289,20 @@ export const LINES = {
   'vincent:gowork': ['Off to clean other people\'s teeth. Not mine. Mine are fine.', 'Time to lecture strangers about flossing.'],
   'vincent:fire': ['Great, now my breath smells of smoke. An improvement.'],
   'vincent:hunger': ['I will eat anything. Anything. Do not test me.'],
+  nermin: [
+    'Sit down. Eat. Why are you so thin? Eat!', 'You call this tea? Real çay takes patience. You have none.',
+    'Shoes inside? INSIDE? Allah Allah.', 'I have two slippers and no patience.', 'My slipper has never missed. Ask my nephews.',
+    'In my day we respected our elders. Also, we ducked.', 'I did not raise you, but I will discipline you.',
+    'The neighbours will talk. Let them. I have more slippers.', 'Who left crumbs on my sofa cover? Confess now.',
+    'You look tired. Eat börek. Then clean.',
+  ],
+  'nermin:slipper': ['YETER!', 'Terlik geliyor!', 'This is for your own good.', 'Duck. Too late.'],
+  'nermin:arrival': ['This house needs a proper clean. And proper food. And me.', 'Who lives like this? Take your shoes off.'],
+  'nermin:gowork': ['Off to the börek shop. Nobody touch my slippers.', 'Six in the morning. The dough will not knead itself.'],
+  'nermin:cook': ['Watch and learn. No, not like that. Like THIS.', 'More butter. Always more butter.'],
+  'nermin:death': ['Rest in peace. You never once took your shoes off.', 'I will bring börek to the funeral. Too much börek.'],
+  'nermin:fight': ['Come here. COME HERE.', 'You think I cannot fight in slippers?'],
+  'nermin:fire': ['My börek! Save the börek!'],
 };
 
 export const REPLIES = {
@@ -302,5 +318,7 @@ export const REPLIES = {
   note: ['Your handwriting also needs a rota.', 'I left a note about your note.', 'A laminated note? You psychopath.'],
   joke: ['I should not laugh. I cannot stop.', 'That is so wrong. Tell it again.'],
   drink: ['It smells like almonds. Is that normal?', 'Cheers! Why are you not drinking?'],
+  slipper: ['OW! Right on the forehead!', 'How is she so ACCURATE?', 'I did not even do anything! This time.', 'Why does it always hit?'],
+  apologise: ['Hmph.', 'Say it again. Slower.', 'We will see.'],
   breathe: ['WHAT HAVE YOU BEEN EATING?!', 'My eyebrows are melting.', 'I can SEE the smell.', 'Is that... toilet? WHY IS IT TOILET?', 'I can taste colours. Brown ones.'],
 };

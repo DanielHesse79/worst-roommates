@@ -90,6 +90,7 @@ function kitchenFire(s, o, g, gas, what) {
     s.status.fleeing = true;
     s.panicGoal = null;
     g.log(`🔥 ${s.name}'s ${what} bursts into flames! ${s.first} jumps back just in time.`, 'evil');
+    g.becomeCareful(s, 'fire', 'nearly went up in flames');
   }
   s.endAction();
 }
@@ -132,6 +133,7 @@ function shock(s, g, lo, hi, what) {
   if (s.health <= 0) { g.kill(s, 'Electrocution'); return; }
   s.endAction();
   s.status.passedOut = 30;
+  g.becomeCareful(s, 'wiring', 'got a nasty shock');
 }
 // Everyone sleeps in their own bed. A dead roommate's bed is up for grabs.
 function bedOwner(o, g) { return g.sims.find(x => x.id === o.owner); }
@@ -174,6 +176,7 @@ export const OBJECT_ACTIONS = {
         if (o.poisoned > 0) {
           if (notices(s, g, 0.6)) {
             g.log(`👀 ${s.first} sniffs the leftovers suspiciously and puts them back.`, 'dim');
+            g.becomeCareful(s, 'poison', 'sniffed something nasty in the leftovers');
             return false;
           }
           o.poisoned--;
@@ -502,12 +505,12 @@ export const triedOn = (s, t, id) => (t.wise && t.wise[s.id] && t.wise[s.id][id]
 const pestered = (s, t) => Object.values((t.wise && t.wise[s.id]) || {}).reduce((a, n) => a + n, 0);
 // Each repeat of the same trick on the same person works half as well again.
 const fade = (s, t, id) => 1 / (1 + 0.5 * Math.max(0, triedOn(s, t, id) - 1));
-const WISE_AT = { errand: 3, gossip: 3, drink: 1, lovebomb: 1, guilttrip: 2, lure: 2, story: 2, playtest: 2, gaslight: 3, joke: 3, triangulate: 3, smear: 3, breathe: 4 };
+const WISE_AT = { apologise: 3, errand: 3, gossip: 3, drink: 1, lovebomb: 1, guilttrip: 2, lure: 2, story: 2, playtest: 2, gaslight: 3, joke: 3, triangulate: 3, smear: 3, breathe: 4 };
 const SEEN_THROUGH = {
   drink: 'The last drink you gave me made me sick. I am not having another.', lovebomb: 'I have seen how this ends. No thanks.',
   guilttrip: 'Cook it yourself.', lure: 'Not falling for that wink again.', story: 'Not this story again. I have heard the prequel.',
   playtest: 'There is no save button. I remember.', gaslight: 'Nice try. I KNOW there was a ladder.', joke: 'Heard it. Not funny the third time.',
-  errand: 'Get your own pizza. I know you just want me out of the house.', gossip: 'You would say anything to start a fight.',
+  apologise: "Sorry doesn't cut it any more.", errand: 'Get your own pizza. I know you just want me out of the house.', gossip: 'You would say anything to start a fight.',
   triangulate: 'You say that about everyone.', smear: 'Nobody believes your rumours any more.', breathe: 'I am holding my breath until you leave.',
 };
 
@@ -558,6 +561,9 @@ export const PUTBACK = { id: 'putback', label: 'Put the pool ladder back', icon:
     g.toggleLadder();
     g.log(`🪜 ${s.first} spots someone stuck in the pool and puts the ladder back. Just in time.`, 'warn');
   } };
+
+// Slippers: an auntie has two, and each one thrown takes a while to fetch back (plans.js).
+export const slippersLeft = s => 2 - ((s.slippersOut && s.slippersOut.length) || 0);
 
 // ---------- manipulation tactics (only sims with the matching personality can use them) ----------
 
@@ -690,6 +696,27 @@ function tactics() {
           g.log(`🤢 ${s.first} ${how}. ${t.first} gags. (-${Math.round(dmg)} health)`, 'evil');
         }
         if (Math.random() < (t.has('hotheaded') ? 0.5 : 0.1)) t.queue.unshift(makeAction(FIGHT, s, 'auto'));
+      } },
+    // Thrown from across the room at anyone she's angry with. People learn to duck.
+    { id: 'slipper', label: 'Throw a slipper at them', icon: '🩴', evil: true, approachSim: true, range: 4.5, duration: 2,
+      available: (s, t) => s.canUse('slipper') && slippersLeft(s) > 0 && s.relWith(t) < (s.role === 'player' ? 0 : -20),
+      whyNot: (s, t) => (!s.canUse('slipper') ? null : slippersLeft(s) <= 0 ? 'Both slippers are across the room' : "She isn't angry with them. Yet."),
+      finish(s, t, g) {
+        (s.slippersOut = s.slippersOut || []).push(g.clock + 90);
+        changeRel(s, t, -8);
+        const dodge = Math.min(0.5, 0.12 * Math.max(0, triedOn(s, t, 'slipper') - 1));
+        if (Math.random() < dodge) {
+          g.log(`🩴 ${s.first} flings a slipper across the room. ${t.first} has learned to duck. It sails past.`, 'dim');
+          return;
+        }
+        const dmg = rand(18, 22);
+        t.health -= dmg;
+        g.popup(t, '🩴 -' + Math.round(dmg), '#ff7ab0');
+        g.sfx('punch');
+        g.view.burst(t.x, t.z, 'dust');
+        if (t.health <= 0) { g.kill(t, 'Slipper'); return; }
+        if (asleep(t)) t.endAction();
+        g.log(`🩴 ${s.first} whips off a slipper and flings it. It hits ${t.first} square on the forehead. (-${Math.round(dmg)} health)`, 'evil');
       } },
     { id: 'playtest', label: 'Make them playtest his game', icon: '🕹️', evil: true, approachSim: true, duration: 5,
       available: s => s.canUse('playtest'),
@@ -854,6 +881,21 @@ export const SIM_ACTIONS = [
       t.x = 10.5; t.z = -60;
       g.log(`🍕 ${s.first} hands ${t.first} a tenner for pizza. ${t.first} heads out. Back in about two hours.`, 'tool');
     } },
+  { id: 'apologise', label: 'Apologise (grovel)', icon: '🙏', approachSim: true, duration: 8,
+    available: (s, t) => t.relWith(s) < 20 || !!t.plan,
+    finish(s, t, g) {
+      changeRel(s, t, 10 * fade(s, t, 'apologise'));
+      if (t.plan && t.plan.target === s.id) {
+        if (Math.random() < Math.min(0.9, 0.35 + (s.skills.charisma || 0) * 0.06)) {
+          g.callOff(t);
+          g.log(`🙏 ${s.first} grovels. ${t.first} sighs: "Fine. But I'm watching you." (${t.first} has dropped their plan)`, 'tool');
+        } else {
+          g.log(`🙏 ${s.first} apologises. ${t.first}: "Sorry? We'll see how sorry you are."`, 'warn');
+        }
+        return;
+      }
+      g.log(`🙏 ${s.first} apologises to ${t.first}. It helps. A bit.`, 'dim');
+    } },
   // Everyone's version of triangulation: tell them what their favourite housemate "said" about them.
   { id: 'gossip', label: 'Tell them what someone said about them', icon: '🗣️', evil: true, approachSim: true, duration: 8,
     available: (s, t, g) => !s.canUse('triangulate') && !!favourite(t, g, s),
@@ -881,6 +923,7 @@ export const SIM_ACTIONS = [
       if (notices(t, g, 0.7)) {
         changeRel(s, t, -10);
         g.log(`👀 ${t.first} eyes the drink, then ${s.first}, and pours it into a plant.`, 'dim');
+        g.becomeCareful(t, 'drink', `was offered a very suspicious drink by ${s.first}`);
         return;
       }
       t.status.poisoned += 60;
@@ -1197,6 +1240,7 @@ const HINTS = {
   airhorn: 'Could stop a weak heart', whisper: 'Costs them sanity and sleep', barge: 'Humiliates them', chewloud: 'Drives them slowly mad',
   stinkhug: 'Now they smell too', sbd: 'A gas cloud that hurts everyone near but you',
   errand: 'Out of the house for about two hours. Harder if they are guarding someone awake',
+  apologise: 'They like you more. May talk them out of a grudge', slipper: '20 damage, from across the room',
   gossip: 'Turns them against their favourite housemate',
   breathe: s => (s.status.breath > 0 ? 'Hurts. Worst when they are asleep' : 'Just gross. Brush with the toilet brush first'),
 };

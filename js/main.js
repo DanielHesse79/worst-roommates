@@ -8,6 +8,7 @@ import { CONTRACTS, evaluate, starsFor, loadProgress, saveProgress, wishMet, ver
 import { onEnterCell, piranhaBite, updateGhosts, canPlaceFloorTrap, fartCloud, carCrash, FLOOR_TRAPS, explode, toppleShelf, toolPrice, toolLock } from './traps.js';
 import { sabotageFor, plantDef, seesThrough } from './interactions.js';
 import { updateFavours } from './crime.js';
+import { becomeCareful, provoked, endPlan, updatePlans } from './plans.js';
 import { initCareer, updateCareer } from './career.js';
 import { Sfx } from './audio.js';
 import { Dialogue } from './dialogue.js';
@@ -144,6 +145,7 @@ class Game {
     this.seenSabotage = false;
     this.oilSlick = 0;
     this.favours = [];
+    this.playerHabits = {};
     initCareer(this, charId, Math.round((contract ? contract.cash : 200) * this.diff.cash) + (this.upgrade('pockets') ? 100 : 0));
     if (contract && contract.setup) contract.setup(this);
   }
@@ -315,7 +317,11 @@ class Game {
   // What you've watched a roommate do, and at what time of day: their habits go on their person card.
   noticeHabit(sim, a) {
     const me = this.player;
-    if (!me || sim === me || !me.alive || !HABITS[a.def.id]) return;
+    if (!me || !me.alive || !HABITS[a.def.id]) return;
+    if (sim === me) {
+      if (this.witnesses([[me.cx, me.cz]]).some(x => x !== me && x.rel)) this.playerHabits[a.def.id] = (this.playerHabits[a.def.id] || 0) + 1;
+      return;
+    }
     if (!this.witnesses([[sim.cx, sim.cz]]).includes(me)) return;
     const h = (this.clock / 60) % 24;
     const when = h < 5 ? 'at night' : h < 12 ? 'in the morning' : h < 18 ? 'in the afternoon' : h < 22 ? 'in the evening' : 'at night';
@@ -325,6 +331,9 @@ class Game {
   }
 
   seesThrough(s, t, def) { return seesThrough(s, t, def, this); }
+  becomeCareful(s, why, what) { becomeCareful(this, s, why, what); }
+  provoked(t, by, def) { provoked(this, t, by, def); }
+  callOff(s) { endPlan(this, s); }
 
   // Back from an errand (see the "errand" action), none the wiser.
   returnFromErrand(s) {
@@ -561,6 +570,9 @@ class Game {
     sim.cause = cause;
     this.dialogue.active.delete(sim.id);
     const witness = this.sims.find(s => s !== sim && s.alive && Math.hypot(s.x - sim.x, s.z - sim.z) < 7);
+    for (const s of this.sims) {
+      if (s !== sim && s.alive && Math.hypot(s.x - sim.x, s.z - sim.z) < 7) this.becomeCareful(s, cause, `saw what happened to ${sim.first}`);
+    }
     if (witness) this.dialogue.say(witness, 'death', 3);
     sim.endAction();
     sim.queue = [];
@@ -751,6 +763,7 @@ class Game {
     updateNeighbours(this, gdt, min);
     updateEmergency(this, gdt, min);
     updateFavours(this);
+    updatePlans(this);
     updateGang(this, gdt, min);
     updateOutsiders(this, gdt, min);
     if (this.hackLockUntil && this.clock > this.hackLockUntil) {

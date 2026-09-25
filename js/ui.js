@@ -4,6 +4,7 @@ import { TRAPS, toolPrice, toolLock } from './traps.js';
 import { JOBS, SKILLS, jobTitle, shiftPay, shiftTime } from './career.js';
 import { CONTRACTS, CAUSE_VERB, describeBonus, bonusMet, isUnlocked, wishState, causeDone, POETIC, canBeNemesis, bestFor, DIFFICULTIES, starKey } from './contracts.js';
 import { SHOP } from './shop.js';
+import { planLine, carefulLine } from './plans.js';
 import { NewsTicker } from './news.js';
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
@@ -300,6 +301,7 @@ export class UI {
       ${t.houseRole ? `<div class="pcRow role">${HOUSE_ROLES[t.houseRole.kind].icon} ${esc(HOUSE_ROLES[t.houseRole.kind].verb((g.sims.find(x => x.id === t.houseRole.ward) || {}).first || ''))}. Not on your list. <small>${esc(HOUSE_ROLES[t.houseRole.kind].desc)}</small></div>` : t.role === 'target' ? '<div class="pcRow role">🎯 On your list.</div>' : ''}
       <div class="pcRow"><b>${esc(PERSONALITIES[t.personality].icon)} ${esc(PERSONALITIES[t.personality].name)}</b> ${t.traits.map(x => `${TRAITS[x].icon} ${esc(TRAITS[x].name)}`).join(' · ')}</div>
       <div class="pcRow">Now: ${esc(doing)}</div>
+      ${[planLine(t, g), carefulLine(t, g)].filter(Boolean).map(l => `<div class="pcRow plan">${esc(l)}</div>`).join('')}
       <div class="pcRow">${states.join('')}</div>
       <div class="pcRow">${tag(toYou[0], toYou[1])}${feelings.join('')}</div>
       <div class="pcRow habits">${habits.length ? `Often: ${habits.join(' · ')}` : '<small>No habits spotted yet. Watch them for a day.</small>'}</div>
