@@ -15,7 +15,7 @@ const FIRE_PARK_X = 6.5, POLICE_PARK_X = 15;
 const REACH = 2.3;                        // hose range, in cells
 const SPRAY_MIN = 1.2;                    // game minutes of hosing per burning cell
 const POLICE_COOLDOWN = 600;              // quiet minutes after a search before another one
-const PROOF = 8;                          // how damning evidence must be to arrest you on a witness's word
+export const PROOF = 8;                   // how damning evidence must be to arrest you on a witness's word
 // If an inspector dies on the job, the station sends the next one on the list.
 const INSPECTORS = ['Gumshoe', 'Gumshoe Jr.', 'Hawkins', 'Sniffington', 'Poirot-Adjacent', 'Clueless'];
 let nextId = 1;
@@ -307,7 +307,7 @@ function updateBrigade(g, gdt, min) {
 // ---------- police investigation ----------
 
 // Everything the detective might find, where it is, and how bad it looks.
-function evidence(g) {
+export function evidence(g) {
   const w = g.world, out = [];
   const add = (id, cell, sus, still, clear, found, bite) => out.push({ id, cell, sus, still, clear, found, bite });
   // Poking at your handiwork is dangerous: sometimes it goes off in his face.
@@ -391,6 +391,9 @@ function evidence(g) {
 
 export const evidenceIds = g => evidence(g).map(e => e.id);
 
+// Who can still give a statement: housemates alive and at home, and any outsider still standing.
+export const talkers = tip => (tip.witnesses || []).filter(x => (x.rel ? x.alive && !x.status.jailed : !x.dead));
+
 // A witness called the police about you. They come quicker than usual, and the first thing they do is
 // check the story: if what the witness saw is still there to find, you're arrested.
 export function reportCrime(g, tip) {
@@ -413,9 +416,15 @@ function takeStatements(g, inv) {
   const p = inv.detective;
   for (const tip of g.tips.splice(0)) {
     const said = `${tip.by} saw ${tip.who} ${tip.what}`;
+    // Dead witnesses give no statements (and roommates in a cell give them to someone else).
+    if (tip.witnesses && !talkers(tip).length) {
+      g.log(`🗒️ ${p.title} came to take a statement from ${tip.by}. ${tip.by} is in no state to give one.`, 'dim');
+      continue;
+    }
     if (tip.proof && tip.proof()) {
-      g.arrest(`🚔 ${said}. ${p.title} has the lab check, and the results back up every word. ${tip.who} is under arrest.`, p);
-      return;
+      charge(g, tip, `🚔 ${said}. ${p.title} has the lab check, and the results back up every word. ${tip.who} is under arrest.`, p);
+      if (!tip.scapegoat) return;
+      continue;
     }
     const found = evidence(g).filter(e => tip.ids.includes(e.id) && e.sus >= PROOF);
     if (!found.length) {
@@ -426,6 +435,12 @@ function takeStatements(g, inv) {
     inv.plan = [...found, ...inv.plan.filter(e => !found.some(f => f.id === e.id))];
     g.log(`🗒️ ${p.title} takes a statement: ${said}. He heads straight there to take a look.`, 'warn');
   }
+}
+
+// Whoever the statement names is who gets arrested: usually you, sometimes whoever you pinned it on.
+function charge(g, tip, msg, p) {
+  if (tip.scapegoat) g.arrestScapegoat(tip.scapegoat, msg);
+  else g.arrest(msg, p);
 }
 
 export function requestInvestigation(g, reason) {
@@ -496,7 +511,7 @@ function updateInvestigation(g, gdt, min) {
         s.clear();
         if (s.sus > 0) inv.found++;
         if (p.dead) { if (s.sus > 0) g.addSuspicion(s.sus); }
-        else if (s.tip) g.arrest(`🚔 ${p.title} ${s.found} It's exactly what ${s.tip.by} described. ${s.tip.who} is under arrest.`, p);
+        else if (s.tip) charge(g, s.tip, `🚔 ${p.title} ${s.found} It's exactly what ${s.tip.by} described. ${s.tip.who} is under arrest.`, p);
         else if (s.sus > 0) exposed(g, `🕵️ ${p.title} ${s.found}`, s.sus);
         else g.log(`🕵️ ${p.title} ${s.found}`, 'tool');
       } else {

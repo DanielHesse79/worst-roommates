@@ -3,7 +3,7 @@
 // The police check the witness's story against the evidence (emergency.js); if it's still there, you're
 // arrested. A police officer who catches you red-handed doesn't need to check anything.
 import { spend } from './career.js';
-import { reportCrime } from './emergency.js';
+import { reportCrime, talkers } from './emergency.js';
 
 export const HATE = -40;                 // the relationship at which someone would happily see you (or them) dead
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -99,7 +99,7 @@ export function witnessCrime(g, me, cells, what, { ids = [], victim = null, proo
       reports.push(x);
     }
   }
-  if (reports.length) callPolice(g, { by: reports.map(x => x.first).join(' and '), who: me.first, what: act, ids, proof });
+  if (reports.length) callPolice(g, { by: reports.map(x => x.first).join(' and '), witnesses: reports, who: me.first, what: act, ids, proof });
 }
 
 function callPolice(g, tip) {
@@ -114,7 +114,7 @@ function blackmail(g, me, x, r, tip) {
   const v = r.v, price = r.price, half = Math.ceil(price / 2);
   const haggle = Math.min(0.9, 0.25 + (me.skills.charisma || 0) * 0.06);
   const bluff = Math.min(0.85, 0.35 + Math.max(0, -rel(x, me) - 40) / 150);
-  const talk = () => callPolice(g, { ...tip, by: x.first });
+  const talk = () => callPolice(g, { ...tip, by: x.first, witnesses: [x] });
   g.ui.choose(`🤐 ${x.first} wants hush money`,
     `${x.first} saw ${me.first} ${tip.what}. They hate ${v.first} even more than they hate ${me.first}, so they're open to a deal. You have $${Math.max(0, Math.floor(g.cash))}.`, [
       { label: `💵 Pay $${price}`, note: g.cash < price ? "You can't afford it" : 'Silence, guaranteed', disabled: g.cash < price, run() {
@@ -132,7 +132,7 @@ function blackmail(g, me, x, r, tip) {
         talk();
       } },
       { label: `🤝 Promise ${v.first} will be dead by tomorrow night`, note: "They keep quiet if you deliver. If not, they talk", run() {
-        g.favours.push({ by: x, victim: v, until: g.clock + 1440, tip: { ...tip, by: x.first } });
+        g.favours.push({ by: x, victim: v, until: g.clock + 1440, tip: { ...tip, by: x.first, witnesses: [x] } });
         bond(x, me, 10);
         g.log(`🤝 ${me.first} and ${x.first} shake on it: ${v.first} is dead within a day, and ${x.first} never saw a thing.`, 'tool');
       } },
@@ -161,11 +161,90 @@ export function updateFavours(g) {
   });
 }
 
-// Being seen tidying up isn't a crime, but it doesn't look great either.
+// Being seen tidying up isn't a crime, but it doesn't look great either. In front of the police, it is one.
 export function witnessCleanup(g, me, cells, what) {
   if (me !== g.player) return;
   const seen = g.witnesses(cells).filter(x => x !== me);
   if (!seen.length) return;
-  g.log(`👀 ${seen.map(x => x.first).join(' and ')} watched ${me.first} ${what[0].toLowerCase() + what.slice(1)}. Very thoroughly.${g.contract ? ' (+5 suspicion)' : ''}`, 'warn');
+  const act = what[0].toLowerCase() + what.slice(1), cop = seen.find(isPolice);
+  if (cop) {
+    g.arrest(`🚔 ${cop.title || cop.first} watches ${me.first} ${act}. "That's called tampering with evidence." ${me.first} is cuffed on the spot.`, cop);
+    return;
+  }
+  g.log(`👀 ${seen.map(x => x.first).join(' and ')} watched ${me.first} ${act}. Very thoroughly.${g.contract ? ' (+5 suspicion)' : ''}`, 'warn');
   g.addSuspicion(5);
+}
+
+// ---------- getting your stories straight ----------
+// A roommate who has already called the police can still take it back before the detective arrives:
+// for money, for a good story, or because it was obviously someone else.
+
+const statementsBy = (g, x) => g.tips.filter(t => !t.scapegoat && talkers(t).includes(x));
+
+function withdraw(g, x, tips, msg) {
+  for (const t of tips) {
+    t.witnesses = t.witnesses.filter(o => o !== x);
+    t.by = t.witnesses.map(o => o.first).join(' and ');
+  }
+  g.tips = g.tips.filter(t => talkers(t).length);
+  if (g.getaway) g.getaway.handled++;
+  g.log(msg, 'tool');
+}
+
+// Who you could pin it on: someone else living here, ideally someone the witness can't stand.
+function scapegoatFor(g, me, x) {
+  return g.sims.filter(s => s.alive && s !== me && s !== x && s.role === 'bystander' && !s.status.away)
+    .sort((a, b) => rel(x, a) - rel(x, b))[0] || null;
+}
+
+export const SETTLE = {
+  id: 'settle', label: 'Get your stories straight', icon: '🤫', approachSim: true, duration: 6,
+  available: (s, t, g) => s === g.player && !!t.rel && statementsBy(g, t).length > 0 && !(g.investigation && g.investigation.state === 'searching'),
+  whyNot: (s, t, g) => (s === g.player && statementsBy(g, t).length ? '🕵️ Too late: the detective already has their statement' : null),
+  finish(s, t, g) { settle(g, s, t); },
+};
+
+function settle(g, me, x) {
+  const tips = statementsBy(g, x);
+  if (!tips.length || g.over) return;
+  const what = tips[0].what, r = rel(x, me);
+  const price = 40 + Math.max(0, Math.round(-r / 2));
+  const talk = clamp(0.2 + (me.skills.charisma || 0) * 0.06 + r / 200 + (g.diff ? g.diff.talk : 0), 0.05, 0.9);
+  const goat = scapegoatFor(g, me, x);
+  const frame = goat && clamp(0.25 + (me.skills.charisma || 0) * 0.05 + Math.max(0, -rel(x, goat)) / 150, 0.1, 0.85);
+  const refuse = (msg, sus) => {
+    bond(x, me, -12);
+    x.firm = true;
+    g.log(msg, 'warn');
+    g.addSuspicion(sus);
+  };
+  const options = [
+    { label: `💵 Pay them to forget ($${price})`, note: g.cash < price ? "You can't afford it" : 'They take it back, guaranteed', disabled: g.cash < price, run() {
+      spend(g, price);
+      bond(x, me, -5);
+      withdraw(g, x, tips, `💵 ${x.first} pockets $${price} and calls the station back: "Actually, I might have been sleepwalking."`);
+    } },
+    { label: '🗣️ Talk them round', note: x.firm ? 'They have heard enough from you' : `${Math.round(talk * 100)}% chance they take it back. If not, they dig in`, disabled: !!x.firm, run() {
+      if (Math.random() < talk) {
+        bond(x, me, 5);
+        withdraw(g, x, tips, `🗣️ ${me.first} explains. At length. By the end, ${x.first} isn't sure what they saw, and tells the police so.`);
+        return;
+      }
+      refuse(`🗣️ ${x.first}: "Nice try. I know what I saw."${g.contract ? ' (+5 suspicion)' : ''}`, 5);
+    } },
+  ];
+  if (goat) {
+    options.push({ label: `🫵 Pin it on ${goat.first}`, note: x.firm ? 'They have heard enough from you' : `${Math.round(frame * 100)}% chance they believe it was ${goat.first}. The police will come for ${goat.first} instead`, disabled: !!x.firm, run() {
+      if (Math.random() < frame) {
+        for (const t of tips) { t.scapegoat = goat; t.who = goat.first; }
+        bond(x, goat, -20);
+        if (g.getaway) g.getaway.handled++;
+        g.log(`🫵 "It was ${goat.first}. Obviously. Same hair, same shifty walk." ${x.first} calls the police back to correct their statement.`, 'tool');
+        return;
+      }
+      refuse(`🫵 ${x.first}: "${goat.first}? ${goat.first} can't even open a jar." They look at ${me.first} even harder.${g.contract ? ' (+10 suspicion)' : ''}`, 10);
+    } });
+  }
+  options.push({ label: '✋ Never mind', note: 'Leave it for now', run() {} });
+  g.ui.choose(`🤫 ${x.first} has talked to the police`, `${x.first} told them they saw ${me.first} ${what}. When the detective arrives, that statement gets checked. You have $${Math.max(0, Math.floor(g.cash))}.`, options);
 }

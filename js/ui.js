@@ -7,6 +7,7 @@ import { SHOP } from './shop.js';
 import { planLine, carefulLine } from './plans.js';
 import { CAM_MODES } from './view.js';
 import { NewsTicker } from './news.js';
+import { getawayStatus } from './getaway.js';
 
 const NEEDS = [['hunger', '🍗', 'Hunger'], ['energy', '⚡', 'Energy'], ['hygiene', '🧼', 'Hygiene'], ['fun', '🎲', 'Fun'], ['social', '💬', 'Social']];
 const hex = c => '#' + c.toString(16).padStart(6, '0');
@@ -108,6 +109,12 @@ export class UI {
     window.addEventListener('pointerdown', e => { if (!this.pie.contains(e.target) && e.target.id !== 'view') this.closePie(); });
 
     const simById = id => g.sims.find(s => s.id === Number(id));
+    // The getaway checklist: run for the gate, or look at what's still lying around.
+    this.$('contractHud').addEventListener('click', e => {
+      if (e.target.closest('[data-run]')) { g.runForIt(); return; }
+      const li = e.target.closest('[data-cell]');
+      if (li) { const [x, z] = li.dataset.cell.split(',').map(Number); g.view.cam.target.set(x + 0.5, 0, z + 0.5); }
+    });
     this.$('portraits').addEventListener('click', e => {
       const el = e.target.closest('[data-id]');
       const s = el && simById(el.dataset.id);
@@ -524,6 +531,7 @@ export class UI {
       return `<li class="${w === true ? 'done' : w === false ? 'missed' : 'pending'}">✨ Ideally ${o.n} different ways to die (${n}/${o.n})</li>`;
     }).join('') + g.sims.filter(s => s.role === 'bystander').map(s => {
       const r = HOUSE_ROLES[s.houseRole.kind], ward = g.sims.find(x => x.id === s.houseRole.ward);
+      if (s.status.jailed) return `<li class="missed">🚔 ${esc(s.first)} <small>arrested for what you did</small></li>`;
       return `<li class="${s.alive ? 'house' : 'failed'}">${s.alive ? r.icon : '💔'} ${esc(s.first)} <small>${esc(r.verb(ward ? ward.first : ''))} · not on the list</small></li>`;
     }).join('') + `<li>🛡️ ${g.player ? esc(g.player.first) : 'You'} must survive, pay the rent and not get caught</li>`;
     const bonus = c.bonus.map(b => `<li class="bonus ${bonusMet(b, g) ? '' : 'missed'}">★ ${esc(describeBonus(b))}</li>`).join('')
@@ -534,9 +542,28 @@ export class UI {
     const susCls = sus >= 75 ? 'hot' : sus >= 50 ? 'warm' : '';
     this.setHTML(el, `
       <div class="hudTitle">📋 ${esc(c.title)} <small title="${esc(g.diff.name)}">${g.diff.icon}</small></div>
-      <div class="deadline ${hrs < 6 ? 'urgent' : ''}">⏳ ${hrs}h ${Math.floor(left % 60)}m left (end of Day ${c.days})</div>
+      ${g.getaway ? this.getawayHtml() : `<div class="deadline ${hrs < 6 ? 'urgent' : ''}">⏳ ${hrs}h ${Math.floor(left % 60)}m left (end of Day ${c.days})</div>`}
       <ul class="objs">${objs}${bonus}</ul>
       <div class="susRow"><span>🕵️ Suspicion</span><div class="susTrack"><div class="susFill ${susCls}" style="width:${sus}%"></div><i style="left:50%"></i></div><em>${sus}</em></div>${work}`);
+  }
+
+  // The getaway: the police are coming, this is what's left for them to find, and who has talked (getaway.js).
+  getawayHtml() {
+    const st = getawayStatus(this.game);
+    if (!st) return '';
+    const items = st.items.map(it => (it.gone
+      ? `<li class="done">✅ ${esc(it.label)}</li>`
+      : `<li class="pending" data-cell="${it.cell.join(',')}" title="Show me">${esc(it.label)} <small>${esc(it.fix || "can't be hidden")}</small></li>`)).join('');
+    const said = st.witnesses.map(w => `<li class="pending">📞 ${esc(w.who)} told the police they saw you ${esc(w.what)} <small>${esc(w.fix)}</small></li>`).join('');
+    const risk = st.risk ? `<div class="gaRisk">${st.risk.icon} ${esc(st.risk.text)}</div>` : '<div class="gaRisk safe">🕊️ Nothing left that could sink you</div>';
+    return `<div class="getaway">
+      <div class="gaTitle">🚨 Getaway: tie up the loose ends</div>
+      <div class="gaPolice">${esc(st.police)}</div>
+      ${items || said ? `<ul class="objs">${items}${said}</ul>` : ''}
+      ${risk}
+      <button class="runBtn" data-run ${st.run ? `disabled title="${esc(st.run)}"` : ''}>🏃 Make a run for it</button>
+      <small class="gaNote">${esc(st.run || 'Out of the front gate before the police get here: half pay, but you get away')}</small>
+    </div>`;
   }
 
   // Job, pay, performance and what's due: the money side of the murder business.
@@ -565,7 +592,7 @@ export class UI {
       const s = r.stars;
       body = `<div class="bigStars">${'★'.repeat(s.count)}${'☆'.repeat(3 - s.count)}</div>
         <ul class="objs"><li class="done">★ Every target dead, and you got away with it</li>${s.bonuses.map(b => `<li class="${b.met ? 'done' : 'missed'}">${b.met ? '★' : '☆'} ${esc(b.text)}</li>`).join('')}</ul>
-        <ul class="objs extras">${r.extras.map(([label, pts]) => `<li class="done">${esc(label)} <b>+${pts}</b></li>`).join('')}</ul>
+        <ul class="objs extras">${r.extras.map(([label, pts]) => `<li class="done">${esc(label)}${pts ? ` <b>+${pts}</b>` : ''}</li>`).join('')}</ul>
         <p class="payout">💯 ${r.points} points <small>(total: ${g.score})</small></p>
         <p class="bestLine">${r.points > r.prevBest ? `🏆 New personal best as ${esc(g.player.first)} on ${g.diff.icon}!${r.prevBest ? ` (was ${r.prevBest})` : ''}` : `🏆 Personal best as ${esc(g.player.first)}: ${r.prevBest}`}</p>
         <p class="payout">🪙 +${r.reward} crypto <small>(wallet: ${g.profile.money})</small></p>

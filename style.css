@@ -192,6 +192,18 @@ button { font-family: inherit; }
 .hudTitle { font-weight: 800; color: #ffd166; font-size: 14px; margin-bottom: 3px; }
 .deadline { font-size: 12px; color: var(--dim); margin-bottom: 4px; }
 .deadline.urgent { color: #ff7a5c; font-weight: 700; }
+.getaway { border: 1px solid #ff6a5a; border-radius: 8px; padding: 7px 8px; margin: 4px 0 8px; background: rgba(255, 90, 70, 0.08); font-size: 12px; }
+.getaway .gaTitle { font-weight: 800; color: #ff7a5c; }
+.getaway .gaPolice { color: #9fc4ff; font-weight: 700; margin: 2px 0; }
+.getaway ul.objs { margin: 4px 0; }
+.getaway li[data-cell] { cursor: pointer; }
+.getaway li[data-cell]:hover { color: #fff; }
+.getaway .gaRisk { color: #ffb36b; margin: 4px 0 6px; }
+.getaway .gaRisk.safe { color: #7dff9a; }
+.getaway .runBtn { width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: #d9534a; color: #fff; font-weight: 800; cursor: pointer; }
+.getaway .runBtn:hover:not(:disabled) { background: #ef6a5f; }
+.getaway .runBtn:disabled { background: #4a3a3e; color: #9b8f95; }
+.getaway .gaNote { display: block; color: var(--dim); margin-top: 3px; }
 ul.objs { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 12px; line-height: 1.55; }
 ul.objs li.done { color: #7dff9a; }
 ul.objs li.failed { color: #ff6a5a; text-decoration: line-through; }

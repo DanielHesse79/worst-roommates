@@ -220,7 +220,7 @@ export const causeDone = sim => CAUSE_PAST[sim.cause] || 'died';
 
 export function bonusMet(b, g) {
   if (b.type === 'suspicion') return g.peakSuspicion < b.max;
-  if (b.type === 'before') return g.clock < (b.day - 1) * 1440;
+  if (b.type === 'before') return (g.getaway ? g.getaway.since : g.clock) < (b.day - 1) * 1440; // the job was done when the getaway began
   if (b.type === 'wish') return wishMet(g);
   return false;
 }

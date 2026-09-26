@@ -4,7 +4,7 @@
 import { triggerFireworks, openMail, fartCloud, dustExplosion, TRAPS, TOOLS, toolPrice, toolLock, canPlaceFloorTrap } from './traps.js';
 import { spend, rehire } from './career.js';
 import { responderSpot, evidenceIds } from './emergency.js';
-import { witnessCrime, witnessCleanup } from './crime.js';
+import { witnessCrime, witnessCleanup, SETTLE } from './crime.js';
 import { visitorOutcome } from './visitors.js';
 import { GRID_W } from './data.js';
 import { summonGang } from './gang.js';
@@ -763,6 +763,7 @@ export const FIGHT = {
 };
 
 export const SIM_ACTIONS = [
+  SETTLE,
   { id: 'note', label: 'Leave a passive-aggressive note', icon: '📝', approachSim: true, duration: 14,
     finish(s, t, g) {
       changeRel(s, t, -8);
@@ -1244,7 +1245,7 @@ const HINTS = {
   stinkhug: 'Now they smell too', sbd: 'A gas cloud that hurts everyone near but you',
   errand: 'Out of the house for about two hours. Harder if they are guarding someone awake',
   apologise: 'They like you more. May talk them out of a grudge', slipper: '20 damage, from across the room',
-  gossip: 'Turns them against their favourite housemate',
+  gossip: 'Turns them against their favourite housemate', settle: 'Pay them, talk them round, or pin it on someone else',
   breathe: s => (s.status.breath > 0 ? 'Hurts. Worst when they are asleep' : 'Just gross. Brush with the toilet brush first'),
 };
 

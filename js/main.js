@@ -18,6 +18,7 @@ import { updateOutsiders, hurtOutsider } from './outsiders.js';
 import { updateGang } from './gang.js';
 import { initNeighbours, updateNeighbours, annoyNeighbour, pleaseNeighbour, SIDES } from './neighbours.js';
 import { updateEmergency, resetEmergency, requestInvestigation, endInvestigation, respondersNear, responderDown } from './emergency.js';
+import { startGetaway, updateGetaway, runForIt } from './getaway.js';
 
 const SPEEDS = [0, 1, 3, 8];
 const SKIP_SPEED = 40;          // time-lapse while you're at work or asleep
@@ -145,6 +146,7 @@ class Game {
     this.seenSabotage = false;
     this.oilSlick = 0;
     this.favours = [];
+    this.getaway = null;
     this.playerHabits = {};
     initCareer(this, charId, Math.round((contract ? contract.cash : 200) * this.diff.cash) + (this.upgrade('pockets') ? 100 : 0));
     if (contract && contract.setup) contract.setup(this);
@@ -396,8 +398,29 @@ class Game {
     else this.dismissVisitors(`👮 ${who} backs down the garden path, rubbing his forehead.`);
   }
 
+  // During the getaway, hitting 100 means the police come to arrest you instead (getaway.js).
   checkExposed() {
-    if (this.suspicion >= 100) this.endContract(false, 'An insurance investigator arrives with a notebook full of questions. You have been exposed.');
+    if (this.suspicion >= 100 && !this.getaway) this.endContract(false, 'An insurance investigator arrives with a notebook full of questions. You have been exposed.');
+  }
+
+  runForIt() { runForIt(this); }
+
+  // Someone else takes the fall: led away in handcuffs, protesting, alive and out of the house for good.
+  arrestScapegoat(sim, msg) {
+    if (!sim.alive || sim.status.jailed) return;
+    if (sim.canUse('slipper')) {
+      this.log(`🩴 The police come for ${sim.first}. The handcuffs come out; ${sim.first}'s slipper comes off. THWACK. They decide it's a matter for another day.`, 'warn');
+      return;
+    }
+    this.popup(sim, '🚔 ARRESTED', '#7ab8ff');
+    this.sfx('police');
+    this.log(`${msg} ${sim.first} protests their innocence all the way to the car. For once, they're telling the truth.`, 'warn');
+    sim.endAction();
+    sim.queue = [];
+    Object.assign(sim.status, { away: true, jailed: true, errand: 0 });
+    sim.x = 10.5; sim.z = -60;
+    if (this.getaway) this.getaway.framed.push(sim.first);
+    this.ui.refresh();
   }
 
   onEnterCell(sim) { onEnterCell(this, sim); }
@@ -653,7 +676,7 @@ class Game {
       this.addSuspicion(sus, sus >= 20 ? `🕵️ ${sim.first}'s death looks... suspicious. (+${sus} suspicion)` : null, true);
       const onlookers = [...visitorsNear(this, sim.x, sim.z, 8), ...respondersNear(this, sim.x, sim.z, 8)];
       if (onlookers.length) this.addSuspicion(15, `👀 ${onlookers.length > 1 ? 'The onlookers' : onlookers[0].first} saw the whole thing. (+15 suspicion)`, true);
-      this.checkContract();
+      this.checkContract(sim);
       this.checkExposed();
     } else {
       this.profile.money += 10;
@@ -671,10 +694,11 @@ class Game {
     this.ui.refresh();
   }
 
-  checkContract() {
+  // The last target down doesn't end it if there are loose ends: then the getaway starts (getaway.js).
+  checkContract(victim) {
     if (!this.contract || this.result) return;
     const r = evaluate(this);
-    if (r.state === 'won') this.endContract(true);
+    if (r.state === 'won') { if (!this.getaway && !startGetaway(this, victim)) this.endContract(true); }
     else if (r.state === 'failed') this.endContract(false, r.reason);
   }
 
@@ -684,14 +708,21 @@ class Game {
     this.result = { won, reason, stars, reward: 0, extras: [] };
     if (won) {
       // Bonus points on top of the kills: the client's way, time to spare, and a clean job.
-      const extras = this.result.extras;
+      const extras = this.result.extras, ga = this.getaway, fled = !!ga && ga.outcome === 'fled';
       if (wishMet(this)) extras.push([this.contract.versus ? '✨ Poetic justice' : '✨ The client\'s way', 300]);
-      const hoursLeft = Math.floor((this.contract.days * 1440 - this.clock) / 60);
+      const hoursLeft = Math.floor((this.contract.days * 1440 - (ga ? ga.since : this.clock)) / 60);
       if (hoursLeft > 0) extras.push([`⏱️ ${hoursLeft}h to spare`, hoursLeft * 10]);
-      if (this.peakSuspicion < 30) extras.push(['🧼 Clean job (suspicion stayed under 30)', 300]);
-      if (!this.seenSabotage) extras.push(['🥷 Nobody ever saw you do it', 200]);
+      if (this.peakSuspicion < 30 && !fled) extras.push(['🧼 Clean job (suspicion stayed under 30)', 300]);
+      if (!this.seenSabotage && !fled) extras.push(['🥷 Nobody ever saw you do it', 200]);
+      if (ga) {
+        if (ga.outcome === 'clean') extras.push(['🧽 Covered your tracks before the police arrived', 150]);
+        if (ga.outcome === 'search') extras.push(['🕵️ Sweated through the police search', 100]);
+        if (fled) extras.push(['🏃 Fled the scene: half pay', 0]);
+        if (ga.handled) extras.push([`🤫 Got ${ga.handled} witness${ga.handled > 1 ? 'es' : ''} to change their story`, 75 * ga.handled]);
+        for (const who of ga.framed) extras.push([`🫵 ${who} took the fall`, 150]);
+      }
       const others = this.sims.filter(s => s.role === 'bystander');
-      if (others.length && others.every(s => s.alive)) extras.push(['🕊️ Nobody else in the house got hurt', 200]);
+      if (others.length && others.every(s => s.alive && !s.status.jailed)) extras.push(['🕊️ Nobody else in the house got hurt', 200]);
       for (const [, pts] of extras) this.addScore(pts);
       // Personal best for this contract with this character.
       const key = bestKey(this.contract.id, this.charId, this.difficulty), points = this.score - this.scoreAtStart;
@@ -703,7 +734,7 @@ class Game {
     if (won) {
       const id = starKey(this.contract.id, this.difficulty);
       const prev = this.profile.stars[id] || 0;
-      this.result.reward = Math.round(contractReward(this.contract, stars.count, prev) * this.diff.pay);
+      this.result.reward = Math.round(contractReward(this.contract, stars.count, prev) * this.diff.pay * (this.getaway && this.getaway.outcome === 'fled' ? 0.5 : 1));
       this.profile.stars[id] = Math.max(prev, stars.count);
       this.profile.money += this.result.reward;
       saveProgress(this.profile);
@@ -780,6 +811,7 @@ class Game {
     updateEmergency(this, gdt, min);
     updateFavours(this);
     updatePlans(this);
+    updateGetaway(this);
     updateGang(this, gdt, min);
     updateOutsiders(this, gdt, min);
     if (this.hackLockUntil && this.clock > this.hackLockUntil) {
@@ -793,7 +825,8 @@ class Game {
       const lawyer = !!this.player && this.player.rosterId === 'asraa' && this.player.alive;
       const fade = 0.5 * (this.upgrade('alibi') ? 2 : 1) * (lawyer ? 2 : 1) * this.diff.fade;
       this.suspicion = Math.max(0, this.suspicion - fade * min / 60);
-      if (this.clock >= this.contract.days * 1440) this.endContract(false, `Time ran out. The deadline was the end of Day ${this.contract.days}.`);
+      // The job is done once the getaway starts: the deadline no longer applies.
+      if (this.clock >= this.contract.days * 1440 && !this.getaway) this.endContract(false, `Time ran out. The deadline was the end of Day ${this.contract.days}.`);
     }
   }
 
