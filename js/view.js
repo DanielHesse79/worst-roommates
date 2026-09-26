@@ -3,17 +3,19 @@ import { GRID_W, GRID_H } from './data.js';
 import { buildLot, objCenter, WALL_H } from './lot.js';
 import { mat, fireCluster, tombstoneMesh, reaperMesh, meteorMesh, simModel, slipperMesh, disposeTree } from './models.js';
 import { Effects } from './effects.js';
+import { figureFor, figureReady, buildCharacter, animateCharacter, disposeCharacter } from './characters.js';
 import { canPlaceFloorTrap, FLOOR_TRAPS } from './traps.js';
 import { Street } from './street.js';
 import { SpeechView } from './speech-view.js';
 
 const CUT_H = 0.55;
 const CAM_KEY = 'worst-roommates-camera';
+const FIG_KEY = 'worst-roommates-figures';
 // Isometric (the classic view), a free 3D perspective, or a perspective that follows your character.
 export const CAM_MODES = { iso: { icon: '📐', name: 'Isometric' }, persp: { icon: '🎥', name: '3D' }, follow: { icon: '🎬', name: 'Follow' },
   fpv: { icon: '👁️', name: 'First person' } };
 const WALK = 2.1;                  // your own walking speed in first person, world units per real second
-const EYE = 1.32, EYE_SWIM = 0.55; // eye height standing and swimming
+const EYE = 1.32, EYE_FIGURE = 1.0, EYE_SWIM = 0.55; // eye height (classic sims, the shorter animated figures) and swimming
 const PERSP_DIST = 32;             // camera distance at zoom 1 in the perspective modes
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const CHARRED = mat(0x1d1714);
@@ -43,6 +45,8 @@ export class View {
     try { mode = localStorage.getItem(CAM_KEY); } catch { /* default view */ }
     this.setCameraMode(CAM_MODES[mode] ? mode : 'iso');
     this.projectiles = [];
+    // Animated figures, or the classic blocky ones (a setting).
+    try { this.figures = localStorage.getItem(FIG_KEY) === 'classic' ? 'classic' : 'modern'; } catch { this.figures = 'modern'; }
     this.keys = new Set();
     this.wallsUp = false;
     this.roofOn = false;
@@ -256,7 +260,7 @@ export class View {
     const walking = (f || s) && this.walkPlayer(f, s, dt);
     L.manual = Math.max(0, L.manual - dt);
     if (!L.manual && !walking) L.yaw = lerpAngle(L.yaw, p.facing || 0, 1 - Math.exp(-dt * 3));
-    const eye = new THREE.Vector3(p.x, p.status.swimming ? EYE_SWIM : EYE, p.z);
+    const eye = new THREE.Vector3(p.x, p.status.swimming ? EYE_SWIM : this.figures === 'modern' ? EYE_FIGURE : EYE, p.z);
     const dir = new THREE.Vector3(Math.sin(L.yaw) * Math.cos(L.pitch), Math.sin(L.pitch), Math.cos(L.yaw) * Math.cos(L.pitch));
     this.camera.position.copy(eye);
     this.camera.lookAt(eye.add(dir));
@@ -570,8 +574,7 @@ export class View {
       if (r.t > 3.8) {
         this.scene.remove(r.mesh);
         disposeTree(r.mesh);
-        const sm = this.simModels.get(r.simId);
-        if (sm) { this.scene.remove(sm.root); disposeTree(sm.root); this.simModels.delete(r.simId); }
+        this.removeSimModel(r.simId);
       }
     }
     this.reapers = this.reapers.filter(r => r.t <= 3.8);
@@ -595,16 +598,36 @@ export class View {
     const g = this.game;
     for (const sim of g.sims) {
       let m = this.simModels.get(sim.id);
+      // The animated figure takes over as soon as it has loaded; the classic model fills in until then.
+      const f = this.figures === 'modern' ? figureFor(sim, g.sims) : null;
+      const wantFigure = !!f && figureReady(f);
+      if (m && sim.alive && (m.kind === 'figure') !== wantFigure) { this.removeSimModel(sim.id); m = null; }
       if (!m) {
         if (!sim.alive) continue;
-        m = simModel(sim);
+        m = wantFigure ? buildCharacter(sim, f) : simModel(sim);
         m.face = sim.facing;
         this.scene.add(m.root);
         this.simModels.set(sim.id, m);
       }
-      posePose(this, m, sim, dt, time, g.selected === sim);
+      if (m.kind === 'figure') animateCharacter(this, m, sim, dt, time, g.selected === sim);
+      else posePose(this, m, sim, dt, time, g.selected === sim);
       m.root.visible = sim.alive ? !sim.status.away && !(sim === g.player && this.eyesOpen()) : m.root.visible;
     }
+  }
+
+  removeSimModel(id) {
+    const m = this.simModels.get(id);
+    if (!m) return;
+    this.scene.remove(m.root);
+    if (m.kind === 'figure') disposeCharacter(m); else disposeTree(m.root);
+    this.simModels.delete(id);
+  }
+
+  // Switches between the animated figures and the classic blocky ones; everyone is rebuilt next frame.
+  setFigures(kind) {
+    this.figures = kind;
+    try { localStorage.setItem(FIG_KEY, kind); } catch { /* this session only */ }
+    for (const id of [...this.simModels.keys()]) this.removeSimModel(id);
   }
 
   // ---------- HTML overlays ----------

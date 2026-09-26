@@ -42,6 +42,7 @@ export class UI {
     this.$('volumeValue').textContent = `${Math.round(g.audio.volume * 100)}%`;
     this.$('ambience').checked = g.audio.ambience;
     this.$('music').checked = g.audio.music;
+    try { this.$('classicFigures').checked = localStorage.getItem('worst-roommates-figures') === 'classic'; } catch { /* default: animated figures */ }
     this.$('dialogue').checked = g.dialogue.enabled;
     this.$('volume').addEventListener('input', e => {
       g.audio.ensure(); g.audio.setVolume(Number(e.target.value) / 100);
@@ -49,6 +50,7 @@ export class UI {
     });
     this.$('ambience').addEventListener('change', () => g.audio.toggleAmbience());
     this.$('music').addEventListener('change', () => g.audio.toggleMusic());
+    this.$('classicFigures').addEventListener('change', e => g.view.setFigures(e.target.checked ? 'classic' : 'modern'));
     this.$('dialogue').addEventListener('change', () => g.dialogue.toggle());
     this.$('journalBtn').addEventListener('click', () => {
       const narrow = window.innerWidth <= 900;

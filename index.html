@@ -6,7 +6,7 @@
 <title>Worst Roommates</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="polish.css">
-<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }</script>
 </head>
 <body>
   <canvas id="view"></canvas>
@@ -51,6 +51,7 @@
           <label class="checkRow"><input id="ambience" type="checkbox" checked> Neighbourhood ambience</label>
           <label class="checkRow"><input id="music" type="checkbox" checked> Music on the menus and when paused</label>
           <label class="checkRow"><input id="dialogue" type="checkbox" checked> Roommate speech bubbles</label>
+          <label class="checkRow"><input id="classicFigures" type="checkbox"> Classic blocky figures</label>
           <label class="checkRow"><input id="newsEnabled" type="checkbox" checked> The Daily Grave news ticker</label>
           <small>Birds outside. Bad decisions inside.</small>
         </div>

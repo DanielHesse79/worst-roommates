@@ -406,7 +406,7 @@ function boot(leather) {
   return g;
 }
 
-function handbag(colour) {
+export function handbag(colour) {
   const g = new THREE.Group();
   const leather = mat(colour, { roughness: 0.4 });
   g.add(box(0.22, 0.16, 0.08, leather, 0, -0.14, 0.02));
@@ -427,11 +427,31 @@ export function slipperMesh() {
   return g;
 }
 
-function toiletBrush() {
+export function toiletBrush() {
   const g = new THREE.Group();
   g.add(cyl(0.012, 0.012, 0.34, 0xe8e8e8, 0, 0.02, 0.05));
   g.add(cyl(0.05, 0.045, 0.09, 0x3b78b8, 0, -0.17, 0.05, 10));
   return g;
+}
+
+// What every sim carries, whichever body they have: the plumbob, the selection ring and (sometimes) flames.
+export function trimmings(root) {
+  const plumbob = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), mat(0x33ff66, { emissive: 0x22aa44, emissiveIntensity: 0.8, unique: true }));
+  plumbob.scale.set(0.8, 1.5, 0.8);
+  plumbob.position.y = 1.72;
+  root.add(plumbob);
+
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.4, 32), new THREE.MeshBasicMaterial({ color: 0x55ff88, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.03;
+  ring.visible = false;
+  root.add(ring);
+
+  const fire = new THREE.Group();
+  fire.add(flameMesh(0.15, 0, 0.7, 0), flameMesh(0.12, 0.12, 0.9, 0.05), flameMesh(0.1, -0.1, 1.0, -0.05));
+  fire.visible = false;
+  root.add(fire);
+  return { plumbob, ring, fire };
 }
 
 export function simModel(sim) {
@@ -521,21 +541,7 @@ export function simModel(sim) {
     }
   }
 
-  const plumbob = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), mat(0x33ff66, { emissive: 0x22aa44, emissiveIntensity: 0.8, unique: true }));
-  plumbob.scale.set(0.8, 1.5, 0.8);
-  plumbob.position.y = 1.72;
-  root.add(plumbob);
-
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.4, 32), new THREE.MeshBasicMaterial({ color: 0x55ff88, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.03;
-  ring.visible = false;
-  root.add(ring);
-
-  const fire = new THREE.Group();
-  fire.add(flameMesh(0.15, 0, 0.7, 0), flameMesh(0.12, 0.12, 0.9, 0.05), flameMesh(0.1, -0.1, 1.0, -0.05));
-  fire.visible = false;
-  root.add(fire);
+  const { plumbob, ring, fire } = trimmings(root);
 
   root.traverse(m => { m.userData.pick = { kind: 'sim', id: sim.id }; });
   ring.userData.pick = null;
