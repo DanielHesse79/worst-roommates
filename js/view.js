@@ -499,12 +499,18 @@ export class View {
       if (u.flag) u.flag.rotation.x = o.flagUp ? 0 : -Math.PI / 2;
       if (id === 'bookshelf') {
         if (!u.baseQuat) u.baseQuat = mesh.quaternion.clone();
+        // Tipping forward; whatever is on the floor stays level while the shelf moves.
+        let tip = 0;
         if (o.toppled) {
           u.fall = Math.min(1, (u.fall || 0) + 0.05);
-          const k = 1 - (1 - u.fall) * (1 - u.fall);
-          mesh.quaternion.copy(u.baseQuat).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), k * Math.PI * 0.48));
-        } else if (o.wobbly) {
-          mesh.quaternion.copy(u.baseQuat).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.04 + Math.sin(time * 9) * 0.02));
+          tip = (1 - (1 - u.fall) * (1 - u.fall)) * Math.PI * 0.48;
+        } else if (o.wobbly) tip = 0.04 + Math.sin(time * 9) * 0.02;
+        const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), tip);
+        mesh.quaternion.copy(u.baseQuat).multiply(q);
+        if (u.floor) {
+          u.floor.quaternion.copy(q).invert();
+          u.spill.visible = !!o.toppled && u.fall > 0.85;
+          u.screws.visible = !!o.wobbly && !o.toppled;
         }
       }
       if (u.poisonGlow) u.poisonGlow.material.opacity = o.poisoned > 0 ? 0.12 + 0.08 * Math.sin(time * 4) : 0;

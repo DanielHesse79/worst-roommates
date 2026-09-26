@@ -1,5 +1,6 @@
 // Procedural low-poly models. Furniture is built facing +z with origin at the footprint centre.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const matCache = new Map();
 const sharedMats = new WeakSet();
@@ -162,13 +163,7 @@ const BUILDERS = {
     g.userData.screen = screen;
     g.add(screen);
   },
-  bookshelf(g) {
-    g.add(box(0.95, 1.8, 0.35, DARKWOOD, 0, 0.9, 0));
-    const cols = [0x9c2f2f, 0x2f5c9c, 0x2f9c55, 0xc9a13b, 0x6e3b9c];
-    for (let shelf = 0; shelf < 4; shelf++) {
-      for (let i = 0; i < 6; i++) g.add(box(0.1, 0.3, 0.25, cols[(i + shelf) % 5], -0.35 + i * 0.13, 0.2 + shelf * 0.42, 0.04));
-    }
-  },
+  bookshelf(g) { buildBookshelf(g); },
   heater(g) {
     g.add(box(0.55, 0.65, 0.25, 0xb0b0b0, 0, 0.33, 0));
     const coil = box(0.45, 0.45, 0.02, 0x442211, 0, 0.35, 0.13, { emissive: 0xff4400, emissiveIntensity: 0.1, unique: true });
@@ -280,6 +275,140 @@ const BUILDERS = {
     g.add(tube);
   },
 };
+
+// ---------- the bookshelf ----------
+
+// The same shelf every time: a tiny seeded random.
+function seeded(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Lots of little boxes, one draw call: each part carries its own colour.
+function tinted(geo, color) {
+  const c = new THREE.Color(color), n = geo.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  geo.setAttribute('color', new THREE.BufferAttribute(a, 3));
+  return geo;
+}
+function mergedMesh(parts) {
+  const m = new THREE.Mesh(mergeGeometries(parts), mat(0xffffff, { vertexColors: true, roughness: 0.85 }));
+  for (const p of parts) p.dispose();
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+const SPINES = [0x7a1f24, 0x1f3a5f, 0x2d5a3a, 0xb8892d, 0xe3d6b8, 0x5b3a24, 0x26262c, 0x2f6f6a, 0x7d4a73, 0xb5502c, 0x44506b, 0x8c8a3a];
+const BANDS = [0xe8d9a8, 0xc9a54a, 0xf2eee4, 0x1d1d1d];
+
+// An open bookcase standing back against the wall: real shelves, uneven rows of books (a few leaning,
+// a few stacked flat), a trailing plant on top, a skull that is probably decorative, and a family photo
+// nobody recognises. When it topples, the books end up on the floor; when its brackets are unscrewed,
+// the screws sit in a neat little pile beside it.
+function buildBookshelf(g) {
+  const rnd = seeded(1979), pick = arr => arr[Math.floor(rnd() * arr.length)];
+  const W = 0.94, H = 1.9, D = 0.34, T = 0.025, Z = -0.13; // Z: pushed back against the wall
+  const WALNUT = 0x6b4428, BACK = 0x3f2716;
+  const carcass = new THREE.Group();
+  carcass.position.z = Z;
+  g.add(carcass);
+  for (const x of [-(W / 2 - 0.02), W / 2 - 0.02]) carcass.add(box(0.04, H, D, WALNUT, x, H / 2, 0));
+  carcass.add(box(W - 0.06, H - 0.1, 0.02, BACK, 0, H / 2, -D / 2 + 0.02));
+  carcass.add(box(W + 0.05, 0.045, D + 0.035, WALNUT, 0, H + 0.02, 0.012));           // cornice
+  carcass.add(box(W - 0.06, 0.09, 0.02, 0x4f311c, 0, 0.045, D / 2 - 0.02));            // kick plate
+  const levels = [0.09, 0.53, 0.97, 1.41];                                             // top of each shelf board
+  for (const y of levels) carcass.add(box(W - 0.07, T, D - 0.03, WALNUT, 0, y - T / 2, 0.005));
+
+  const books = [], inner = W / 2 - 0.05, front = D / 2 - 0.02;
+  const book = (w, h, d, x, y, z, lean = 0, flat = false) => {
+    const body = tinted(new THREE.BoxGeometry(w, h, d), pick(SPINES));
+    const band = tinted(new THREE.BoxGeometry(flat ? 0.006 : w * 1.02, flat ? h * 1.02 : 0.016, 0.004), pick(BANDS));
+    band.translate(0, flat ? 0 : h * 0.28, d / 2 + 0.001);
+    for (const geo of [body, band]) {
+      if (lean) { geo.translate(-w / 2, h / 2, 0); geo.rotateZ(lean); } else geo.translate(0, h / 2, 0);
+      geo.translate(x, y, z);
+      books.push(geo);
+    }
+  };
+  levels.forEach((y0, shelf) => {
+    const room = (shelf < 3 ? levels[shelf + 1] - T : H) - y0 - 0.03;
+    let x = -inner;
+    // Some shelves start with a stack lying flat.
+    if (shelf === 1 || shelf === 3) {
+      let yy = y0;
+      const n = 2 + Math.floor(rnd() * 3);
+      for (let i = 0; i < n; i++) {
+        const t = 0.03 + rnd() * 0.02, len = 0.19 + rnd() * 0.05;
+        book(len, t, 0.2 + rnd() * 0.05, x + 0.12 + (rnd() - 0.5) * 0.02, yy, Z + front - 0.13, 0, true);
+        yy += t;
+      }
+      x += 0.26;
+    }
+    const stop = shelf === 2 ? 0.12 : shelf === 0 ? 0.33 : 0.28;                    // leave room for the ornaments
+    for (;;) {
+      const w = 0.026 + rnd() * 0.042, h = Math.min(room, 0.2 + rnd() * 0.13), d = 0.19 + rnd() * 0.07;
+      if (x + w > stop) break;
+      book(w, h, d, x + w / 2, y0, Z + front - d / 2 - rnd() * 0.015);
+      x += w + 0.002;
+      if (rnd() < 0.06) x += 0.03 + rnd() * 0.05;                                      // someone borrowed one
+    }
+    // The last book leans on its neighbour.
+    if (shelf !== 0) {
+      const w = 0.035, h = Math.min(room, 0.26), a = 0.32;
+      book(w, h, 0.22, x + w * Math.cos(a) + h * Math.sin(a), y0, Z + front - 0.12, a);
+    }
+  });
+  g.add(mergedMesh(books));
+
+  // Ornaments: a trailing pothos on top, a skull, a trophy, a framed photo, a bookend.
+  g.add(cyl(0.075, 0.055, 0.12, 0xb5603a, 0.26, H + 0.1, Z + 0.02));
+  const leaf = (x, y, z, r) => { const s = sphere(r, 0x3f8f3a, x, y, z); s.scale.set(1, 0.7, 1); g.add(s); };
+  leaf(0.24, H + 0.2, Z + 0.02, 0.09); leaf(0.33, H + 0.18, Z + 0.06, 0.07); leaf(0.18, H + 0.17, Z + 0.07, 0.06);
+  for (let i = 0; i < 5; i++) leaf(0.41 + i * 0.01, H + 0.1 - i * 0.12, Z + D / 2 + 0.01, 0.04 - i * 0.003);
+  for (let i = 0; i < 3; i++) g.add(box(0.2, 0.035, 0.16, pick(SPINES), -0.22, H + 0.06 + i * 0.035, Z));
+  // A skull on the middle shelf. Probably decorative.
+  const sy = levels[2];
+  const skull = sphere(0.065, 0xece4d2, 0.3, sy + 0.075, Z + 0.04);
+  skull.scale.set(1, 0.95, 1.1);
+  g.add(skull, box(0.07, 0.035, 0.06, 0xe0d7c2, 0.3, sy + 0.022, Z + 0.08));
+  for (const dx of [-0.022, 0.022]) g.add(sphere(0.016, 0x151515, 0.3 + dx, sy + 0.08, Z + 0.1));
+  // A trophy for something nobody remembers, and a photo of a family nobody recognises.
+  const ty = levels[3];
+  g.add(cyl(0.035, 0.035, 0.03, 0x3a3a3a, 0.37, ty + 0.015, Z + 0.02), cyl(0.012, 0.012, 0.08, 0xd4af37, 0.37, ty + 0.07, Z + 0.02),
+    cyl(0.05, 0.02, 0.07, 0xd4af37, 0.37, ty + 0.14, Z + 0.02));
+  const frame = box(0.13, 0.17, 0.02, 0x2a2a2a, -0.36, levels[1] + 0.085, Z + 0.05);
+  frame.rotation.x = -0.12;
+  frame.add(box(0.1, 0.13, 0.004, 0x8fb3c9, 0, 0, 0.011));
+  g.add(frame);
+  g.add(box(0.015, 0.14, 0.12, STEEL, 0.405, levels[0] + 0.07, Z + 0.04), box(0.08, 0.008, 0.12, STEEL, 0.37, levels[0] + 0.004, Z + 0.04));
+
+  // What ends up on the floor: shown by the view, which keeps this group level while the shelf moves.
+  const floor = new THREE.Group();
+  const spillParts = [];
+  for (let i = 0; i < 14; i++) {
+    const w = 0.2 + rnd() * 0.06, t = 0.035 + rnd() * 0.02, d = 0.15 + rnd() * 0.05;
+    const side = i % 2 ? 1 : -1, x = side * (0.55 + rnd() * 0.35), z = 0.2 + rnd() * 1.9;
+    const geo = tinted(new THREE.BoxGeometry(w, t, d), pick(SPINES));
+    geo.rotateY(rnd() * Math.PI);
+    geo.translate(x, t / 2 + (i % 3 === 0 ? t : 0), z);
+    spillParts.push(geo);
+  }
+  const spill = mergedMesh(spillParts);
+  spill.visible = false;
+  const screws = new THREE.Group();
+  for (let i = 0; i < 6; i++) screws.add(cyl(0.014, 0.014, 0.06, 0xd8dde2, 0.36 + (i % 3) * 0.03, 0.015, 0.24 + Math.floor(i / 3) * 0.034, 6).rotateZ(Math.PI / 2));
+  for (const b of [0, 1]) screws.add(box(0.1, 0.008, 0.035, STEEL, 0.25, 0.005 + b * 0.008, 0.3 + b * 0.02));
+  screws.visible = false;
+  floor.add(spill, screws);
+  g.add(floor);
+  Object.assign(g.userData, { floor, spill, screws });
+}
 
 export function buildFurniture(obj, facing) {
   const g = new THREE.Group();
